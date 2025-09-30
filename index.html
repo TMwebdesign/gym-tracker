@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>🏋️ Gym Tracker PRO</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="manifest" href="manifest.json">
+  <style>
+    body { font-family: Arial, sans-serif; margin:0; padding:0; background:#111; color:#eee; }
+    header { background:#222; padding:1rem; text-align:center; font-size:1.3rem; font-weight:bold; }
+    button { margin:.3rem; padding:.6rem 1rem; border:none; border-radius:6px; background:#28a745; color:#fff; cursor:pointer; }
+    button:hover { background:#218838; }
+    .hidden { display:none; }
+    .container { max-width:800px; padding:1rem; margin:auto; }
+    .exercise { border:1px solid #444; padding:.7rem; margin-bottom:.7rem; border-radius:6px; }
+    .exercise h3 { margin:.2rem 0; }
+    .exercise small { color:#aaa; display:block; margin:.3rem 0; }
+    input { padding:.3rem; margin:.2rem; width:80px; }
+    .series-list { margin:.5rem 0; font-size:.9rem; color:#ccc; }
+    .timer { font-weight:bold; color:#0f0; margin-left:.5rem; }
+    canvas { background:#fff; border-radius:6px; margin-top:1rem; }
+    .heatmap { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-top:1rem; }
+    .heatmap div { width:20px; height:20px; background:#333; }
+    .heatmap .active { background:#28a745; }
+    .light-mode { background:#fafafa; color:#111; }
+    .light-mode header { background:#ddd; color:#000; }
+    table { border-collapse: collapse; margin-top:1rem; width:100%; }
+    th, td { border:1px solid #555; padding:.5rem; text-align:center; }
+    th { background:#333; }
+  </style>
+</head>
+<body class="dark-mode">
+  <header>🏋️ Gym Tracker PRO</header>
+
+  <div class="container" id="menu">
+    <button onclick="startSession('A')">▶ Avvia Giorno A</button>
+    <button onclick="startSession('B')">▶ Avvia Giorno B</button>
+    <button onclick="showDashboard()">📊 Dashboard</button>
+    <button onclick="showHistory()">📜 Storico</button>
+    <button onclick="toggleTheme()">🌙/☀️</button>
+  </div>
+
+  <div class="container hidden" id="session"></div>
+  <div class="container hidden" id="dashboard"></div>
+  <div class="container hidden" id="history"></div>
+
+  <audio id="beep">
+    <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
+  </audio>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+    import "https://cdn.jsdelivr.net/npm/chart.js";
+
+    // 🔑 Config Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyCiOFFDXtnCgLVb9CTs4Q-QU0UlLParN_s",
+      authDomain: "pale-ee7ea.firebaseapp.com",
+      projectId: "pale-ee7ea",
+      storageBucket: "pale-ee7ea.appspot.com",
+      messagingSenderId: "494736253739",
+      appId: "1:494736253739:web:4719c6b1076ae9bc281b6e"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let currentSession = null;
+    let timerInterval = null;
+
+    // 📋 Schede Giorno A/B
+    const schede = {
+      A: [
+        { nome:"Chest Press", come:"Spingi in avanti mantenendo i gomiti a 90°.", att:"Non estendere troppo le braccia." },
+        { nome:"Shoulder Press", come:"Spingi sopra la testa con schiena aderente.", att:"Non inarcare la schiena." },
+        { nome:"Pectoral Machine", come:"Chiudi le braccia come un abbraccio.", att:"Non sbattere le braccia al centro." },
+        { nome:"Alzate Laterali", come:"Braccia leggermente piegate, solleva fino alle spalle.", att:"Non oltre i 90°." },
+        { nome:"Addominali Crunch", come:"Contrai l’addome, piccolo movimento.", att:"Non tirare il collo." }
+      ],
+      B: [
+        { nome:"Lat Machine", come:"Tira la barra al petto mantenendo il busto fermo.", att:"Non oscillare con la schiena." },
+        { nome:"Rematore Macchina", come:"Tira i manici verso l’addome.", att:"Non inarcare la schiena." },
+        { nome:"Leg Press", come:"Spingi con i talloni, ginocchia a 90°.", att:"Non stendere del tutto le gambe." },
+        { nome:"Leg Curl", come:"Piega le gambe contraendo i femorali.", att:"Movimento lento e controllato." },
+        { nome:"Plank", come:"Corpo in linea, addome contratto.", att:"Non inarcare la schiena." }
+      ]
+    };
+
+    // 🚀 Avvia sessione
+    async function startSession(day) {
+      currentSession = { day, date:new Date(), exercises:[] };
+      document.getElementById("menu").classList.add("hidden");
+      const c = document.getElementById("session");
+      c.innerHTML = `<h2>Sessione Giorno ${day}</h2>`;
+      for (const ex of schede[day]) {
+        const last = await getLastExercise(ex.nome);
+        c.innerHTML += `
+          <div class="exercise">
+            <h3>${ex.nome}</h3>
+            <small>👉 ${ex.come}</small>
+            <small>⚠️ ${ex.att}</small>
+            <small><b>Ultima volta:</b> ${last || "N/A"}</small><br>
+            Rip: <input type="number" class="rip" min="1"> 
+            Peso: <input type="number" class="peso" min="0"> 
+            <button onclick="addSerie(this)">➕ Serie</button>
+            <button onclick="startTimer(this,90)">⏱️ Recupero</button>
+            <span class="timer"></span>
+            <div class="series-list"></div>
+          </div>`;
+      }
+      c.innerHTML += `<button onclick="saveSession()">💾 Salva sessione</button>
+                      <button onclick="backToMenu()">⬅️ Torna</button>`;
+      c.classList.remove("hidden");
+    }
+    window.startSession = startSession;
+
+    // ➕ Aggiungi serie
+    function addSerie(btn) {
+      const parent = btn.parentElement;
+      const rip = parent.querySelector(".rip").value;
+      const peso = parent.querySelector(".peso").value;
+      if (!rip || !peso) return alert("Inserisci ripetizioni e peso");
+      const list = parent.querySelector(".series-list");
+      list.innerHTML += `<div>${rip} x ${peso}kg</div>`;
+      parent.querySelector(".rip").value = "";
+      parent.querySelector(".peso").value = "";
+    }
+    window.addSerie = addSerie;
+
+    // ⏱️ Timer con beep
+    function startTimer(btn, seconds) {
+      const timerEl = btn.nextElementSibling;
+      let time = seconds;
+      clearInterval(timerInterval);
+      timerInterval = setInterval(()=>{
+        timerEl.textContent = `${time}s`;
+        if (time<=5 && time>0) document.getElementById("beep").play();
+        if (time<=0) clearInterval(timerInterval);
+        time--;
+      },1000);
+    }
+    window.startTimer = startTimer;
+
+    // 💾 Salva sessione
+    async function saveSession() {
+      const list = document.querySelectorAll(".exercise");
+      list.forEach(ex=>{
+        const name = ex.querySelector("h3").innerText;
+        const series = Array.from(ex.querySelectorAll(".series-list div")).map(d=>d.innerText);
+        currentSession.exercises.push({ name, series });
+      });
+      await addDoc(collection(db,"sessions"), currentSession);
+      alert("Sessione salvata ✅");
+      backToMenu();
+    }
+    window.saveSession = saveSession;
+
+    // ⏪ Torna al menu
+    function backToMenu() {
+      document.getElementById("session").classList.add("hidden");
+      document.getElementById("dashboard").classList.add("hidden");
+      document.getElementById("history").classList.add("hidden");
+      document.getElementById("menu").classList.remove("hidden");
+    }
+    window.backToMenu = backToMenu;
+
+    // 📊 Dashboard
+    async function showDashboard() {
+      document.getElementById("menu").classList.add("hidden");
+      const dash = document.getElementById("dashboard");
+      dash.classList.remove("hidden");
+      dash.innerHTML = `<h2>📊 Dashboard</h2>
+        <canvas id="chart" width="400" height="200"></canvas>
+        <div class="heatmap" id="heatmap"></div>
+        <h3>🏆 PR per esercizio</h3>
+        <div id="prTable"></div>
+        <button onclick="backToMenu()">⬅️ Torna</button>`;
+
+      const q = query(collection(db,"sessions"), orderBy("date","asc"));
+      const snap = await getDocs(q);
+      const data = [];
+      snap.forEach(doc=>data.push(doc.data()));
+
+      drawChart(data);
+      drawHeatmap(data);
+      drawPR(data);
+    }
+    window.showDashboard = showDashboard;
+
+    // 📈 Grafico
+    function drawChart(data) {
+      const ctx = document.getElementById("chart").getContext("2d");
+      const labels = data.map(d=>new Date(d.date.seconds*1000).toLocaleDateString());
+      const values = data.map(d=>d.exercises.reduce((tot,e)=>tot+e.series.length,0));
+      new Chart(ctx,{ type:"line",
+        data:{ labels, datasets:[{ label:"Serie totali", data:values, borderColor:"green" }] }
+      });
+    }
+
+    // 🔥 Heatmap
+    function drawHeatmap(data) {
+      const map=document.getElementById("heatmap"); map.innerHTML="";
+      const days={};
+      data.forEach(d=>{
+        const date=new Date(d.date.seconds*1000).toISOString().split("T")[0];
+        days[date]=true;
+      });
+      for(let i=0;i<30;i++){
+        const box=document.createElement("div");
+        const day=new Date(); day.setDate(day.getDate()-i);
+        if(days[day.toISOString().split("T")[0]]) box.classList.add("active");
+        map.appendChild(box);
+      }
+    }
+
+    // 🏆 Calcolo PR
+    function drawPR(data) {
+      const pr = {};
+      data.forEach(d=>{
+        d.exercises.forEach(ex=>{
+          ex.series.forEach(s=>{
+            const match = s.match(/(\d+)\s*x\s*(\d+)/);
+            if(match){
+              const ripetizioni = parseInt(match[1]);
+              const peso = parseInt(match[2]);
+              if(!pr[ex.name] || peso > pr[ex.name].peso){
+                const oneRM = Math.round(peso * (1 + ripetizioni/30));
+                pr[ex.name] = { peso, ripetizioni, oneRM };
+              }
+            }
+          });
+        });
+      });
+
+      const container = document.getElementById("prTable");
+      container.innerHTML = "<table><tr><th>Esercizio</th><th>Peso max</th><th>Ripetizioni</th><th>1RM stimato</th></tr>";
+      for(const [name, val] of Object.entries(pr)) {
+        container.innerHTML += `<tr><td>${name}</td><td>${val.peso} kg</td><td>${val.ripetizioni}</td><td>${val.oneRM} kg</td></tr>`;
+      }
+      container.innerHTML += "</table>";
+    }
+
+    // 📜 Storico
+    async function showHistory() {
+      document.getElementById("menu").classList.add("hidden");
+      const hist=document.getElementById("history");
+      hist.classList.remove("hidden");
+      hist.innerHTML=`<h2>📜 Storico</h2>`;
+      const q=query(collection(db,"sessions"),orderBy("date","desc"));
+      const snap=await getDocs(q);
+      snap.forEach(doc=>{
+        const d=doc.data();
+        const div=document.createElement("div");
+        div.innerHTML=`<b>${d.day}</b> - ${new Date(d.date.seconds*1000).toLocaleDateString()}<br>
+          ${d.exercises.map(e=>`${e.name}: ${e.series.join(", ")}`).join("<br>")}<hr>`;
+        hist.appendChild(div);
+      });
+      hist.innerHTML+=`<button onclick="backToMenu()">⬅️ Torna</button>`;
+    }
+    window.showHistory = showHistory;
+
+    // 📌 Ultima volta esercizio
+    async function getLastExercise(nome) {
+      const q=query(collection(db,"sessions"),orderBy("date","desc"),limit(1));
+      const snap=await getDocs(q);
+      let result=null;
+      snap.forEach(doc=>{
+        const ex=doc.data().exercises.find(e=>e.name===nome);
+        if(ex) result=ex.series.join(", ");
+      });
+      return result;
+    }
+
+    // 🌙/☀️ Tema
+    function toggleTheme() {
+      document.body.classList.toggle("light-mode");
+      document.body.classList.toggle("dark-mode");
+    }
+    window.toggleTheme = toggleTheme;
+
+    // 🛠️ PWA Service Worker
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js");
+    }
+  </script>
+
+  <!-- 🔧 Manifest JSON inline -->
+  <script type="application/json" id="manifest">
+  {
+    "name": "Gym Tracker PRO",
+    "short_name": "GymTracker",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#111",
+    "theme_color": "#28a745",
+    "icons": []
+  }
+  </script>
+
+  <!-- 🔧 Service Worker inline (sw.js virtual) -->
+  <script>
+    const swCode = `
+      self.addEventListener("install", e=>{
+        e.waitUntil(caches.open("gym-cache").then(c=>c.addAll(["."])));
+      });
+      self.addEventListener("fetch", e=>{
+        e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)));
+      });
+    `;
+    const blob = new Blob([swCode], {type:"text/javascript"});
+    const swUrl = URL.createObjectURL(blob);
+    navigator.serviceWorker.register(swUrl);
+  </script>
+</body>
+</html>
