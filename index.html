@@ -10,7 +10,7 @@
     button { margin:.3rem; padding:.6rem 1rem; border:none; border-radius:6px; background:#28a745; color:#fff; cursor:pointer; }
     button:hover { background:#218838; }
     .hidden { display:none; }
-    .container { max-width:800px; padding:1rem; margin:auto; }
+    .container { max-width:900px; padding:1rem; margin:auto; }
     .exercise { border:1px solid #444; padding:.7rem; margin-bottom:.7rem; border-radius:6px; }
     .exercise h3 { margin:.2rem 0; }
     .exercise small { color:#aaa; display:block; margin:.3rem 0; }
@@ -26,6 +26,7 @@
     table { border-collapse: collapse; margin-top:1rem; width:100%; }
     th, td { border:1px solid #555; padding:.5rem; text-align:center; }
     th { background:#333; }
+    .edit-input { width:60px; }
   </style>
 </head>
 <body class="dark-mode">
@@ -49,10 +50,10 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-    import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+    import { getFirestore, collection, doc, setDoc, getDocs, getDoc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
     import "https://cdn.jsdelivr.net/npm/chart.js";
 
-    // 🔑 Config Firebase
+    // 🔑 Config Firebase (sostituisci col tuo)
     const firebaseConfig = {
       apiKey: "AIzaSyCiOFFDXtnCgLVb9CTs4Q-QU0UlLParN_s",
       authDomain: "pale-ee7ea.firebaseapp.com",
@@ -64,38 +65,54 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    let currentSession = null;
+    let currentDay = null;
     let timerInterval = null;
 
-    // 📋 Schede Giorno A/B
+    // 📋 Schede Giorno A/B con muscoli
     const schede = {
       A: [
-        { nome:"Chest Press", come:"Spingi in avanti mantenendo i gomiti a 90°.", att:"Non estendere troppo le braccia." },
-        { nome:"Shoulder Press", come:"Spingi sopra la testa con schiena aderente.", att:"Non inarcare la schiena." },
-        { nome:"Pectoral Machine", come:"Chiudi le braccia come un abbraccio.", att:"Non sbattere le braccia al centro." },
-        { nome:"Alzate Laterali", come:"Braccia leggermente piegate, solleva fino alle spalle.", att:"Non oltre i 90°." },
-        { nome:"Addominali Crunch", come:"Contrai l’addome, piccolo movimento.", att:"Non tirare il collo." }
+        { nome:"Chest Press", muscolo:"Petto", come:"Spingi in avanti mantenendo i gomiti a 90°.", att:"Non estendere troppo le braccia." },
+        { nome:"Shoulder Press", muscolo:"Spalle", come:"Spingi sopra la testa con schiena aderente.", att:"Non inarcare la schiena." },
+        { nome:"Pectoral Machine", muscolo:"Petto", come:"Chiudi le braccia come un abbraccio.", att:"Non sbattere le braccia al centro." },
+        { nome:"Alzate Laterali", muscolo:"Spalle", come:"Braccia leggermente piegate, solleva fino alle spalle.", att:"Non oltre i 90°." },
+        { nome:"Addominali Crunch", muscolo:"Addome", come:"Contrai l’addome, piccolo movimento.", att:"Non tirare il collo." }
       ],
       B: [
-        { nome:"Lat Machine", come:"Tira la barra al petto mantenendo il busto fermo.", att:"Non oscillare con la schiena." },
-        { nome:"Rematore Macchina", come:"Tira i manici verso l’addome.", att:"Non inarcare la schiena." },
-        { nome:"Leg Press", come:"Spingi con i talloni, ginocchia a 90°.", att:"Non stendere del tutto le gambe." },
-        { nome:"Leg Curl", come:"Piega le gambe contraendo i femorali.", att:"Movimento lento e controllato." },
-        { nome:"Plank", come:"Corpo in linea, addome contratto.", att:"Non inarcare la schiena." }
+        { nome:"Lat Machine", muscolo:"Dorsali", come:"Tira la barra al petto mantenendo il busto fermo.", att:"Non oscillare con la schiena." },
+        { nome:"Rematore Macchina", muscolo:"Dorsali", come:"Tira i manici verso l’addome.", att:"Non inarcare la schiena." },
+        { nome:"Leg Press", muscolo:"Gambe", come:"Spingi con i talloni, ginocchia a 90°.", att:"Non stendere del tutto le gambe." },
+        { nome:"Leg Curl", muscolo:"Gambe", come:"Piega le gambe contraendo i femorali.", att:"Movimento lento e controllato." },
+        { nome:"Plank", muscolo:"Addome", come:"Corpo in linea, addome contratto.", att:"Non inarcare la schiena." }
       ]
     };
 
+    // 🔹 Helpers
+    function todayKey(day) {
+      const d = new Date().toISOString().split("T")[0];
+      return `${day}-${d}`;
+    }
+
     // 🚀 Avvia sessione
     async function startSession(day) {
-      currentSession = { day, date:new Date(), exercises:[] };
+      currentDay = day;
       document.getElementById("menu").classList.add("hidden");
       const c = document.getElementById("session");
+
+      const sessionId = todayKey(day);
+      const docRef = doc(db, "sessions", sessionId);
+      const snap = await getDoc(docRef);
+      let sessionData = snap.exists() ? snap.data() : { day, date: new Date(), exercises: [] };
+
       c.innerHTML = `<h2>Sessione Giorno ${day}</h2>`;
       for (const ex of schede[day]) {
-        const last = await getLastExercise(ex.nome);
+        const last = await getLastExercise(ex.nome, day);
+        const current = sessionData.exercises.find(e=>e.name===ex.nome);
+        const savedSeries = current ? current.series : [];
+
         c.innerHTML += `
           <div class="exercise">
             <h3>${ex.nome}</h3>
+            <small>💪 Muscoli: ${ex.muscolo}</small>
             <small>👉 ${ex.come}</small>
             <small>⚠️ ${ex.att}</small>
             <small><b>Ultima volta:</b> ${last || "N/A"}</small><br>
@@ -103,17 +120,19 @@
             Peso: <input type="number" class="peso" min="0"> 
             <button class="btnAddSerie">➕ Serie</button>
             <button class="btnTimer">⏱️ Recupero</button>
+            <button class="btnDynTimer">⏱️ Timer+</button>
             <span class="timer"></span>
-            <div class="series-list"></div>
+            <div class="series-list">${savedSeries.map(s=>`<div>${s}</div>`).join("")}</div>
           </div>`;
       }
       c.innerHTML += `<button id="btnSave">💾 Salva sessione</button>
                       <button id="btnBack">⬅️ Torna</button>`;
       c.classList.remove("hidden");
 
-      // bind dinamici
+      // Bind
       c.querySelectorAll(".btnAddSerie").forEach(b => b.addEventListener("click", () => addSerie(b)));
       c.querySelectorAll(".btnTimer").forEach(b => b.addEventListener("click", () => startTimer(b,90)));
+      c.querySelectorAll(".btnDynTimer").forEach(b => b.addEventListener("click", () => dynamicTimer(b,30,60,3)));
       document.getElementById("btnSave").addEventListener("click", saveSession);
       document.getElementById("btnBack").addEventListener("click", backToMenu);
     }
@@ -141,14 +160,43 @@
       },1000);
     }
 
+    function dynamicTimer(btn, execTime, restTime, sets) {
+      const timerEl = btn.nextElementSibling;
+      let setCount = 0;
+      function runSet() {
+        let t = execTime;
+        timerEl.textContent = `Esecuzione ${++setCount}/${sets}`;
+        let intv = setInterval(()=>{
+          timerEl.textContent = `${t}s esecuzione`;
+          if(t<=0) {
+            clearInterval(intv);
+            if(setCount<sets) startRest();
+          }
+          t--;
+        },1000);
+      }
+      function startRest() {
+        let r=restTime;
+        let intv=setInterval(()=>{
+          timerEl.textContent = `${r}s recupero`;
+          if(r<=5 && r>0) document.getElementById("beep").play();
+          if(r<=0){ clearInterval(intv); runSet(); }
+          r--;
+        },1000);
+      }
+      runSet();
+    }
+
     async function saveSession() {
+      const sessionId = todayKey(currentDay);
       const list = document.querySelectorAll(".exercise");
+      const exercises=[];
       list.forEach(ex=>{
         const name = ex.querySelector("h3").innerText;
         const series = Array.from(ex.querySelectorAll(".series-list div")).map(d=>d.innerText);
-        currentSession.exercises.push({ name, series });
+        exercises.push({ name, series });
       });
-      await addDoc(collection(db,"sessions"), currentSession);
+      await setDoc(doc(db,"sessions",sessionId), { day: currentDay, date:new Date(), exercises });
       alert("Sessione salvata ✅");
       backToMenu();
     }
@@ -166,24 +214,33 @@
       dash.classList.remove("hidden");
       dash.innerHTML = `<h2>📊 Dashboard</h2>
         <canvas id="chart" width="400" height="200"></canvas>
-        <div class="heatmap" id="heatmap"></div>
+        <canvas id="muscleChart" width="400" height="200"></canvas>
         <button id="btnBackDash">⬅️ Torna</button>`;
       document.getElementById("btnBackDash").addEventListener("click", backToMenu);
 
       const q = query(collection(db,"sessions"), orderBy("date","asc"));
       const snap = await getDocs(q);
-      const data = [];
-      snap.forEach(doc=>data.push(doc.data()));
+      const data = []; snap.forEach(doc=>data.push(doc.data()));
       drawChart(data);
+      drawMuscles(data);
     }
 
     function drawChart(data) {
       const ctx = document.getElementById("chart").getContext("2d");
-      const labels = data.map(d=>new Date(d.date.seconds*1000).toLocaleDateString());
+      const labels = data.map(d=>new Date(d.date).toLocaleDateString());
       const values = data.map(d=>d.exercises.reduce((tot,e)=>tot+e.series.length,0));
-      new Chart(ctx,{ type:"line",
-        data:{ labels, datasets:[{ label:"Serie totali", data:values, borderColor:"green" }] }
-      });
+      new Chart(ctx,{ type:"line", data:{ labels, datasets:[{ label:"Serie totali", data:values, borderColor:"green" }] } });
+    }
+
+    function drawMuscles(data) {
+      const stats={};
+      data.forEach(d=>d.exercises.forEach(e=>{
+        const exInfo = [...schede.A,...schede.B].find(x=>x.nome===e.name);
+        if(!exInfo) return;
+        stats[exInfo.muscolo] = (stats[exInfo.muscolo]||0)+e.series.length;
+      }));
+      const ctx=document.getElementById("muscleChart").getContext("2d");
+      new Chart(ctx,{ type:"pie", data:{ labels:Object.keys(stats), datasets:[{ data:Object.values(stats), backgroundColor:["#f00","#0f0","#00f","#ff0","#0ff"] }] } });
     }
 
     async function showHistory() {
@@ -193,26 +250,56 @@
       hist.innerHTML=`<h2>📜 Storico</h2>`;
       const q=query(collection(db,"sessions"),orderBy("date","desc"));
       const snap=await getDocs(q);
-      snap.forEach(doc=>{
-        const d=doc.data();
+      snap.forEach(async docSnap=>{
+        const d=docSnap.data();
         const div=document.createElement("div");
-        div.innerHTML=`<b>${d.day}</b> - ${new Date(d.date.seconds*1000).toLocaleDateString()}<br>
+        div.innerHTML=`<b>${d.day}</b> - ${new Date(d.date).toLocaleDateString()} 
+          <button class="editBtn">📝 Modifica</button>
+          <button class="delBtn">🗑️ Elimina</button><br>
           ${d.exercises.map(e=>`${e.name}: ${e.series.join(", ")}`).join("<br>")}<hr>`;
         hist.appendChild(div);
+
+        div.querySelector(".delBtn").addEventListener("click", async()=>{
+          if(confirm("Eliminare sessione?")){ await deleteDoc(doc(db,"sessions",docSnap.id)); location.reload(); }
+        });
+        div.querySelector(".editBtn").addEventListener("click", ()=>{
+          div.innerHTML=`<h4>Modifica ${d.day} - ${new Date(d.date).toLocaleDateString()}</h4>`;
+          d.exercises.forEach((e,ei)=>{
+            div.innerHTML+=`<b>${e.name}</b><br>`+e.series.map((s,si)=>`<input class="edit-input" id="ex-${ei}-${si}" value="${s}">`).join("")+"<br>";
+          });
+          const save=document.createElement("button");
+          save.textContent="💾 Salva Modifiche";
+          save.onclick=async()=>{
+            const newEx=[];
+            d.exercises.forEach((e,ei)=>{
+              const series=[];
+              e.series.forEach((s,si)=>{
+                series.push(document.getElementById(`ex-${ei}-${si}`).value);
+              });
+              newEx.push({name:e.name,series});
+            });
+            await setDoc(doc(db,"sessions",docSnap.id),{...d,exercises:newEx});
+            alert("Modifiche salvate ✅"); location.reload();
+          };
+          div.appendChild(save);
+        });
       });
       hist.innerHTML+=`<button id="btnBackHist">⬅️ Torna</button>`;
       document.getElementById("btnBackHist").addEventListener("click", backToMenu);
     }
 
-    async function getLastExercise(nome) {
-      const q=query(collection(db,"sessions"),orderBy("date","desc"),limit(1));
+    async function getLastExercise(nome, day) {
+      const q=query(collection(db,"sessions"),orderBy("date","desc"));
       const snap=await getDocs(q);
-      let result=null;
+      let prev=null;
       snap.forEach(doc=>{
-        const ex=doc.data().exercises.find(e=>e.name===nome);
-        if(ex) result=ex.series.join(", ");
+        const d=doc.data();
+        if(d.day===day && !prev) {
+          const ex=d.exercises.find(e=>e.name===nome);
+          if(ex && ex.series.length>0) prev=ex.series[ex.series.length-1];
+        }
       });
-      return result;
+      return prev;
     }
 
     function toggleTheme() {
