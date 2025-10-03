@@ -33,7 +33,7 @@
     tr:nth-child(even) { background:#2a2a2a; }
   </style>
 </head>
-<body class="dark-mode">
+<body>
   <header>🏋️ Gym Tracker PRO</header>
 
   <div class="container" id="menu">
@@ -54,34 +54,33 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
-    // 🔑 CONFIG GITHUB
-    const GH_USER = "TUO_USERNAME"; 
-    const GH_REPO = "gym-tracker-data"; 
+    // 🔑 CONFIG GITHUB (metti i tuoi dati)
+    const GH_USER = "TUO_USERNAME";
+    const GH_REPO = "gym-tracker-data";
     const GH_FILE = "sessions.json";
     const GH_TOKEN = "ghp_TUO_TOKEN";
 
-    let currentSessionDay = null;
     let timerInterval = null;
 
-    // 📋 Schede Giorno A/B
+    // 📋 Schede con muscoli
     const schede = {
       A: [
-        { nome:"Chest Press", come:"Spingi in avanti mantenendo i gomiti a 90°.", att:"Non estendere troppo le braccia." },
-        { nome:"Shoulder Press", come:"Spingi sopra la testa con schiena aderente.", att:"Non inarcare la schiena." },
-        { nome:"Pectoral Machine", come:"Chiudi le braccia come un abbraccio.", att:"Non sbattere le braccia al centro." },
-        { nome:"Alzate Laterali", come:"Braccia leggermente piegate, solleva fino alle spalle.", att:"Non oltre i 90°." },
-        { nome:"Addominali Crunch", come:"Contrai l’addome, piccolo movimento.", att:"Non tirare il collo." }
+        { nome:"Chest Press", muscoli:"Petto", come:"Spingi in avanti con gomiti a 90°.", att:"Non estendere troppo le braccia." },
+        { nome:"Shoulder Press", muscoli:"Spalle", come:"Spingi sopra la testa con schiena aderente.", att:"Non inarcare la schiena." },
+        { nome:"Pectoral Machine", muscoli:"Petto", come:"Chiudi le braccia come un abbraccio.", att:"Non sbattere le braccia al centro." },
+        { nome:"Alzate Laterali", muscoli:"Spalle", come:"Solleva braccia piegate fino alle spalle.", att:"Non oltre i 90°." },
+        { nome:"Crunch", muscoli:"Addome", come:"Piccolo movimento contrazione addominale.", att:"Non tirare il collo." }
       ],
       B: [
-        { nome:"Lat Machine", come:"Tira la barra al petto mantenendo il busto fermo.", att:"Non oscillare con la schiena." },
-        { nome:"Rematore Macchina", come:"Tira i manici verso l’addome.", att:"Non inarcare la schiena." },
-        { nome:"Leg Press", come:"Spingi con i talloni, ginocchia a 90°.", att:"Non stendere del tutto le gambe." },
-        { nome:"Leg Curl", come:"Piega le gambe contraendo i femorali.", att:"Movimento lento e controllato." },
-        { nome:"Plank", come:"Corpo in linea, addome contratto.", att:"Non inarcare la schiena." }
+        { nome:"Lat Machine", muscoli:"Dorsali", come:"Tira la barra al petto busto fermo.", att:"Non oscillare." },
+        { nome:"Rematore Macchina", muscoli:"Dorsali", come:"Tira manici verso addome.", att:"Non inarcare la schiena." },
+        { nome:"Leg Press", muscoli:"Gambe", come:"Spingi con talloni ginocchia a 90°.", att:"Non bloccare le gambe." },
+        { nome:"Leg Curl", muscoli:"Gambe", come:"Piega gambe contraendo femorali.", att:"Movimento lento." },
+        { nome:"Plank", muscoli:"Addome", come:"Corpo in linea addome contratto.", att:"Non inarcare la schiena." }
       ]
     };
 
-    // GitHub API: load sessions.json
+    // 🔄 GitHub API
     async function loadSessions() {
       const res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/${GH_FILE}`, {
         headers: { Authorization: `token ${GH_TOKEN}` }
@@ -91,208 +90,193 @@
       return { sessions: JSON.parse(content), sha: data.sha };
     }
 
-    // GitHub API: save sessions.json
-    async function saveSessionsToGitHub(sessions, msg="Update session") {
+    async function saveSessions(sessions, msg="Update session") {
       const { sha } = await loadSessions();
       const content = btoa(JSON.stringify(sessions, null, 2));
-      const res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/${GH_FILE}`, {
-        method: "PUT",
-        headers: { Authorization: `token ${GH_TOKEN}`, "Content-Type":"application/json" },
-        body: JSON.stringify({ message: msg, content: content, sha })
+      await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/${GH_FILE}`, {
+        method:"PUT",
+        headers:{ Authorization:`token ${GH_TOKEN}`, "Content-Type":"application/json" },
+        body: JSON.stringify({ message: msg, content, sha })
       });
-      if (!res.ok) alert("❌ Errore salvataggio");
+    }
+
+    function todayKey(day){
+      const d=new Date().toISOString().split("T")[0];
+      return `${day}-${d}`;
     }
 
     // 🚀 Avvia sessione
-    async function startSession(day) {
-      currentSessionDay = day;
+    async function startSession(day){
+      const { sessions } = await loadSessions();
+      const key=todayKey(day);
+      let session=sessions.find(s=>s.id===key);
+      const prev=sessions.filter(s=>s.day===day).slice(-2, -1)[0]; // penultima sessione
+
+      if(!session){
+        session={ id:key, day, date:new Date().toISOString(), exercises:[], muscleStats:{} };
+        sessions.push(session);
+        await saveSessions(sessions,"Nuova sessione");
+      }
+
       document.getElementById("menu").classList.add("hidden");
-      const c = document.getElementById("session");
-      c.innerHTML = `<h2>Sessione Giorno ${day}</h2>`;
-      for (const ex of schede[day]) {
-        c.innerHTML += `
+      const c=document.getElementById("session");
+      c.innerHTML=`<h2>Sessione Giorno ${day}</h2>`;
+
+      schede[day].forEach(ex=>{
+        const data=session.exercises.find(e=>e.name===ex.nome);
+        const lastSeries = data ? data.series : [];
+        const prevSeries = prev ? (prev.exercises.find(e=>e.name===ex.nome)?.series.slice(-1)[0] || "N/A") : "N/A";
+        c.innerHTML+=`
           <div class="exercise">
             <h3>${ex.nome}</h3>
+            <small>💪 Muscoli: ${ex.muscoli}</small>
             <small>👉 ${ex.come}</small>
             <small>⚠️ ${ex.att}</small>
+            <small><b>Ultima volta:</b> ${prevSeries}</small><br>
             Rip: <input type="number" class="rip" min="1"> 
             Peso: <input type="number" class="peso" min="0"> 
-            <button onclick="addSerie(this)">➕ Serie</button>
+            <button onclick="addSerie('${key}','${ex.nome}',this)">➕ Serie</button>
             <button onclick="startTimer(this,90)">⏱️ Recupero</button>
+            <button onclick="startAdvancedTimer(this)">⏱️ TIMER+</button>
             <span class="timer"></span>
-            <div class="series-list"></div>
+            <div class="series-list">${lastSeries.map(s=>`<div>${s}</div>`).join("")}</div>
           </div>`;
-      }
-      c.innerHTML += `<button onclick="saveSession()">💾 Salva sessione</button>
-                      <button class="secondary" onclick="backToMenu()">⬅️ Indietro</button>`;
+      });
+
+      c.innerHTML+=`<button onclick="backToMenu()">⬅️ Indietro</button>`;
       c.classList.remove("hidden");
     }
-    window.startSession = startSession;
+    window.startSession=startSession;
 
-    function addSerie(btn) {
-      const parent = btn.parentElement;
-      const rip = parent.querySelector(".rip").value;
-      const peso = parent.querySelector(".peso").value;
-      if (!rip || !peso) return alert("Inserisci ripetizioni e peso");
-      const list = parent.querySelector(".series-list");
-      list.innerHTML += `<div>${rip} x ${peso}kg</div>`;
-      parent.querySelector(".rip").value = "";
-      parent.querySelector(".peso").value = "";
+    async function addSerie(key,name,btn){
+      const parent=btn.parentElement;
+      const rip=parent.querySelector(".rip").value;
+      const peso=parent.querySelector(".peso").value;
+      if(!rip||!peso) return alert("Inserisci ripetizioni e peso");
+      const serie=`${rip}x${peso}kg`;
+      const { sessions } = await loadSessions();
+      const s=sessions.find(x=>x.id===key);
+      let ex=s.exercises.find(e=>e.name===name);
+      if(!ex){ ex={name,series:[]}; s.exercises.push(ex); }
+      ex.series.push(serie);
+      await saveSessions(sessions,"Aggiornata sessione");
+      parent.querySelector(".series-list").innerHTML+=`<div>${serie}</div>`;
+      parent.querySelector(".rip").value="";
+      parent.querySelector(".peso").value="";
     }
-    window.addSerie = addSerie;
+    window.addSerie=addSerie;
 
-    function startTimer(btn, seconds) {
-      const timerEl = btn.nextElementSibling;
-      let time = seconds;
+    function startTimer(btn,seconds){
+      const timerEl=btn.nextElementSibling;
+      let t=seconds;
       clearInterval(timerInterval);
-      timerInterval = setInterval(()=>{
-        timerEl.textContent = `${time}s`;
-        if (time<=5 && time>0) document.getElementById("beep").play();
-        if (time<=0) clearInterval(timerInterval);
-        time--;
+      timerInterval=setInterval(()=>{
+        timerEl.textContent=`${t}s`;
+        if(t<=5&&t>0) document.getElementById("beep").play();
+        if(t<=0) clearInterval(timerInterval);
+        t--;
       },1000);
     }
-    window.startTimer = startTimer;
+    window.startTimer=startTimer;
 
-    async function saveSession() {
-      const list = document.querySelectorAll(".exercise");
-      const exercises = [];
-      list.forEach(ex=>{
-        const name = ex.querySelector("h3").innerText;
-        const series = Array.from(ex.querySelectorAll(".series-list div")).map(d=>d.innerText);
-        exercises.push({ name, series });
-      });
-      const { sessions } = await loadSessions();
-      sessions.push({ day: currentSessionDay, date:new Date().toISOString(), exercises });
-      await saveSessionsToGitHub(sessions, "Nuova sessione");
-      alert("✅ Sessione salvata!");
-      backToMenu();
+    async function startAdvancedTimer(btn){
+      const parent=btn.parentElement;
+      const num=parseInt(prompt("Quante serie?",4));
+      const exec=parseInt(prompt("Tempo esecuzione (s)?",30));
+      const rec=parseInt(prompt("Recupero (s)?",60));
+      if(!num||!exec||!rec) return;
+      const timerEl=parent.querySelector(".timer");
+      clearInterval(timerInterval);
+      let serie=1, phase="prep", t=5;
+      timerInterval=setInterval(()=>{
+        if(t>0){
+          timerEl.textContent= phase==="prep"?`⌛ Prep: ${t}s`:
+            phase==="exec"?`🔵 Serie ${serie}/${num}: ${t}s`:`🟢 Rec: ${t}s`;
+          if(t<=5) document.getElementById("beep").play();
+          t--;
+        } else {
+          if(phase==="prep"){phase="exec";t=exec;}
+          else if(phase==="exec"){ if(serie<num){phase="rec";t=rec;} else {timerEl.textContent="✅ Fine";clearInterval(timerInterval);} }
+          else if(phase==="rec"){serie++;phase="exec";t=exec;}
+        }
+      },1000);
     }
-    window.saveSession = saveSession;
+    window.startAdvancedTimer=startAdvancedTimer;
 
-    function backToMenu() {
-      ["session","dashboard","history"].forEach(id=>document.getElementById(id).classList.add("hidden"));
-      document.getElementById("menu").classList.remove("hidden");
-    }
-    window.backToMenu = backToMenu;
+    function backToMenu(){["session","dashboard","history"].forEach(id=>document.getElementById(id).classList.add("hidden"));document.getElementById("menu").classList.remove("hidden");}
+    window.backToMenu=backToMenu;
 
-    async function showDashboard() {
+    // 📊 Dashboard
+    async function showDashboard(){
       document.getElementById("menu").classList.add("hidden");
-      const dash = document.getElementById("dashboard");
+      const dash=document.getElementById("dashboard");
       dash.classList.remove("hidden");
-      dash.innerHTML = `<h2>📊 Dashboard</h2>
-        <div style="background:#222; padding:1rem; border-radius:8px;">
-          <canvas id="chart"></canvas>
-        </div>
-        <div class="heatmap" id="heatmap"></div>
-        <h3>🏆 PR per esercizio</h3>
-        <div id="prTable"></div>
-        <button class="secondary" onclick="backToMenu()">⬅️ Indietro</button>`;
-
-      const { sessions } = await loadSessions();
+      dash.innerHTML=`<h2>📊 Dashboard</h2>
+        <canvas id="chart"></canvas>
+        <canvas id="pie"></canvas>
+        <h3>🏆 PR per esercizio</h3><div id="prTable"></div>
+        <button onclick="backToMenu()">⬅️ Indietro</button>`;
+      const { sessions }=await loadSessions();
       drawChart(sessions);
-      drawHeatmap(sessions);
+      drawPie(sessions);
       drawPR(sessions);
     }
-    window.showDashboard = showDashboard;
+    window.showDashboard=showDashboard;
 
-    function drawChart(sessions) {
-      const ctx = document.getElementById("chart").getContext("2d");
-      const labels = sessions.map(d=>new Date(d.date).toLocaleDateString());
-      const values = sessions.map(d=>d.exercises.reduce((tot,e)=>tot+e.series.length,0));
-      new Chart(ctx,{ type:"line",
-        data:{ labels, datasets:[{ label:"Serie totali", data:values, borderColor:"#28a745", fill:false }] },
-        options:{ responsive:true, plugins:{ legend:{ labels:{ color:"white" } } },
-                  scales:{ x:{ ticks:{ color:"white" } }, y:{ ticks:{ color:"white" } } } }
-      });
+    function drawChart(sessions){
+      const ctx=document.getElementById("chart").getContext("2d");
+      const labels=sessions.map(s=>new Date(s.date).toLocaleDateString());
+      const values=sessions.map(s=>s.exercises.reduce((tot,e)=>tot+e.series.length,0));
+      new Chart(ctx,{type:"line",data:{labels,datasets:[{label:"Serie totali",data:values,borderColor:"#28a745"}]},options:{plugins:{legend:{labels:{color:"white"}}},scales:{x:{ticks:{color:"white"}},y:{ticks:{color:"white"}}}}});
     }
 
-    function drawHeatmap(sessions) {
-      const map=document.getElementById("heatmap"); map.innerHTML="";
-      const days={};
-      sessions.forEach(d=>{
-        const date=new Date(d.date).toISOString().split("T")[0];
-        days[date]=true;
-      });
-      for(let i=0;i<30;i++){
-        const box=document.createElement("div");
-        const day=new Date(); day.setDate(day.getDate()-i);
-        if(days[day.toISOString().split("T")[0]]) box.classList.add("active");
-        map.appendChild(box);
-      }
+    function drawPie(sessions){
+      const counts={};
+      sessions.forEach(s=>s.exercises.forEach(e=>{
+        const m=schede[s.day].find(x=>x.nome===e.name)?.muscoli;
+        if(m) counts[m]=(counts[m]||0)+e.series.length;
+      }));
+      const ctx=document.getElementById("pie").getContext("2d");
+      new Chart(ctx,{type:"pie",data:{labels:Object.keys(counts),datasets:[{data:Object.values(counts),backgroundColor:["#28a745","#007bff","#ffc107","#dc3545","#17a2b8"]}]},options:{plugins:{legend:{labels:{color:"white"}}}}});
     }
 
-    function drawPR(sessions) {
-      const pr = {};
-      sessions.forEach(d=>{
-        d.exercises.forEach(ex=>{
-          ex.series.forEach(s=>{
-            const match = s.match(/(\d+)\s*x\s*(\d+)/);
-            if(match){
-              const rip = parseInt(match[1]), peso = parseInt(match[2]);
-              if(!pr[ex.name] || peso > pr[ex.name].peso){
-                const oneRM = Math.round(peso * (1 + rip/30));
-                pr[ex.name] = { peso, rip, oneRM };
-              }
-            }
-          });
-        });
-      });
-      const container = document.getElementById("prTable");
-      container.innerHTML = "<table><tr><th>Esercizio</th><th>Peso max</th><th>Ripetizioni</th><th>1RM stimato</th></tr>";
-      for(const [name, val] of Object.entries(pr)) {
-        container.innerHTML += `<tr><td>${name}</td><td>${val.peso} kg</td><td>${val.rip}</td><td>${val.oneRM} kg</td></tr>`;
-      }
-      container.innerHTML += "</table>";
+    function drawPR(sessions){
+      const pr={};
+      sessions.forEach(s=>s.exercises.forEach(ex=>ex.series.forEach(str=>{
+        const m=str.match(/(\d+)x(\d+)/);if(m){const rip=+m[1],peso=+m[2];if(!pr[ex.name]||peso>pr[ex.name].peso){const oneRM=Math.round(peso*(1+rip/30));pr[ex.name]={peso,rip,oneRM};}}}));
+      const c=document.getElementById("prTable");c.innerHTML="<table><tr><th>Esercizio</th><th>Peso max</th><th>Rip</th><th>1RM stimato</th></tr>";
+      for(const [n,v] of Object.entries(pr)){c.innerHTML+=`<tr><td>${n}</td><td>${v.peso}kg</td><td>${v.rip}</td><td>${v.oneRM}kg</td></tr>`;}
+      c.innerHTML+="</table>";
     }
 
-    async function showHistory() {
+    // 📜 Storico
+    async function showHistory(){
       document.getElementById("menu").classList.add("hidden");
-      const hist=document.getElementById("history");
-      hist.classList.remove("hidden");
-      hist.innerHTML=`<h2>📜 Storico</h2><div id="historyList"></div>
-                      <button class="secondary" onclick="backToMenu()">⬅️ Indietro</button>`;
-      const { sessions } = await loadSessions();
+      const hist=document.getElementById("history");hist.classList.remove("hidden");
+      hist.innerHTML="<h2>📜 Storico</h2><div id='historyList'></div><button onclick='backToMenu()'>⬅️ Indietro</button>";
+      const { sessions }=await loadSessions();
       const list=document.getElementById("historyList");
-      sessions.reverse().forEach((d,idx)=>{
+      sessions.slice().reverse().forEach((s,idx)=>{
         const div=document.createElement("div");
-        div.style="border:1px solid #444; margin:.5rem 0; padding:.5rem; border-radius:6px;";
-        div.innerHTML=`<b>${d.day}</b> - ${new Date(d.date).toLocaleDateString()}
-          <button class="danger" onclick="deleteSession(${idx})">🗑️ Elimina</button>
-          <ul>${d.exercises.map((e,ei)=>`<li>${e.name}: ${e.series.map((s,si)=>`<span>${s}</span> 
-          <button class='secondary' onclick="editSerie(${idx},${ei},${si})">✏️</button>`).join(", ")}</li>`).join("")}</ul>`;
+        div.style="border:1px solid #444;margin:.5rem 0;padding:.5rem;border-radius:6px;";
+        const musc={};s.exercises.forEach(e=>{
+          const m=schede[s.day].find(x=>x.nome===e.name)?.muscoli;
+          if(m) musc[m]=(musc[m]||0)+e.series.length;
+        });
+        div.innerHTML=`<b>${s.day}</b> - ${new Date(s.date).toLocaleDateString()} 
+          <button class="danger" onclick="deleteSession('${s.id}')">🗑️</button><br>
+          ${s.exercises.map(e=>`${e.name}: ${e.series.join(", ")}`).join("<br>")}
+          <br><i>Distribuzione: ${Object.entries(musc).map(([k,v])=>`${k} ${v}`).join(", ")}</i>`;
         list.appendChild(div);
       });
     }
-    window.showHistory = showHistory;
+    window.showHistory=showHistory;
 
-    async function deleteSession(idx){
-      const { sessions } = await loadSessions();
-      if(confirm("Vuoi davvero eliminare questa sessione?")){
-        sessions.splice(idx,1);
-        await saveSessionsToGitHub(sessions,"Eliminata sessione");
-        showHistory();
-      }
-    }
-    window.deleteSession = deleteSession;
+    async function deleteSession(id){const { sessions }=await loadSessions();const i=sessions.findIndex(s=>s.id===id);if(i>-1){sessions.splice(i,1);await saveSessions(sessions,"Eliminata sessione");showHistory();}}
+    window.deleteSession=deleteSession;
 
-    async function editSerie(si,ei,ri){
-      const { sessions } = await loadSessions();
-      const old = sessions[si].exercises[ei].series[ri];
-      const nuovo = prompt("Modifica serie:", old);
-      if(nuovo){
-        sessions[si].exercises[ei].series[ri] = nuovo;
-        await saveSessionsToGitHub(sessions,"Serie modificata");
-        showHistory();
-      }
-    }
-    window.editSerie = editSerie;
-
-    function toggleTheme() {
-      document.body.classList.toggle("light-mode");
-      document.body.classList.toggle("dark-mode");
-    }
-    window.toggleTheme = toggleTheme;
+    function toggleTheme(){document.body.classList.toggle("light-mode");}
+    window.toggleTheme=toggleTheme;
   </script>
 </body>
 </html>
