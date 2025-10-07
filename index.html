@@ -2,13 +2,13 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8">
-  <title>Gym Tracker PRO 2.0</title>
+  <title>🏋️ Gym Tracker PRO</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body {
       font-family: "Poppins", sans-serif;
-      background: #fdfdfd;
+      background: #fefefe;
       color: #111;
       margin: 0;
       padding: 0;
@@ -19,16 +19,11 @@
       background: #00b894;
       color: white;
       padding: 1rem;
-      font-size: 1.5rem;
+      font-size: 1.6rem;
       font-weight: bold;
-      letter-spacing: 0.5px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
-    .container {
-      max-width: 900px;
-      margin: auto;
-      padding: 1rem;
-    }
+    .container { max-width: 900px; margin: auto; padding: 1rem; }
     button {
       background: #00b894;
       color: white;
@@ -47,11 +42,10 @@
       padding: 1rem;
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
       margin-bottom: 1rem;
-      position: relative;
       animation: fadeIn 0.3s ease;
     }
     .exercise h3 { margin: .2rem 0; }
-    .exercise small { display: block; color: #666; margin-bottom: .3rem; }
+    .exercise small { display: block; color: #555; margin-bottom: .3rem; }
     input {
       width: 70px;
       padding: .3rem;
@@ -89,20 +83,6 @@
       display: none;
       z-index: 999;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 1rem;
-    }
-    th, td {
-      padding: .5rem;
-      border: 1px solid #ccc;
-      text-align: center;
-    }
-    th {
-      background: #00b894;
-      color: white;
-    }
     .hidden { display: none; }
     @keyframes fadeIn {
       from {opacity:0; transform:translateY(10px);}
@@ -111,7 +91,7 @@
   </style>
 </head>
 <body>
-  <header>🏋️ Gym Tracker PRO 2.0</header>
+  <header>🏋️ Gym Tracker PRO</header>
 
   <div class="container" id="menu">
     <button onclick="startSession('A')">▶ Giorno A</button>
@@ -135,7 +115,7 @@
     let currentSession = null;
     let timerInterval = null;
 
-    // 📋 Schede
+    // 📋 Schede Giorno A/B
     const schede = {
       A: [
         { nome:"Chest Press", muscolo:"Petto", come:"Spingi in avanti mantenendo i gomiti a 90°.", att:"Non estendere troppo le braccia." },
@@ -145,11 +125,11 @@
         { nome:"Crunch", muscolo:"Addome", come:"Contrai l’addome.", att:"Non tirare il collo." }
       ],
       B: [
-        { nome:"Lat Machine", muscolo:"Dorso", come:"Tira la barra al petto.", att:"Non oscillare." },
-        { nome:"Rematore", muscolo:"Dorso", come:"Tira i manici verso l’addome.", att:"Non inarcare la schiena." },
-        { nome:"Leg Press", muscolo:"Gambe", come:"Spingi con i talloni.", att:"Non stendere troppo." },
-        { nome:"Leg Curl", muscolo:"Femorali", come:"Piega le gambe.", att:"Movimento lento." },
-        { nome:"Plank", muscolo:"Addome", come:"Corpo in linea.", att:"Non inarcare la schiena." }
+        { nome:"Lat Machine", muscolo:"Dorso", come:"Tira la barra al petto mantenendo il busto fermo.", att:"Non oscillare con la schiena." },
+        { nome:"Rematore Macchina", muscolo:"Dorso", come:"Tira i manici verso l’addome.", att:"Non inarcare la schiena." },
+        { nome:"Leg Press", muscolo:"Gambe", come:"Spingi con i talloni, ginocchia a 90°.", att:"Non stendere del tutto le gambe." },
+        { nome:"Leg Curl", muscolo:"Femorali", come:"Piega le gambe contraendo i femorali.", att:"Movimento lento e controllato." },
+        { nome:"Plank", muscolo:"Addome", come:"Corpo in linea, addome contratto.", att:"Non inarcare la schiena." }
       ]
     };
 
@@ -160,11 +140,26 @@
         .select("*")
         .eq("day", day)
         .gte("date", new Date(Date.now()-24*60*60*1000).toISOString());
-      if (data && data.length) currentSession = data[0];
-      else {
+
+      if (data && data.length) {
+        currentSession = data[0];
+      } else {
         const { data: created } = await supa.from("sessions").insert([{ day }]).select().single();
         currentSession = created;
       }
+
+      const { data: existing } = await supa.from("exercises").select("*").eq("session_id", currentSession.id);
+      if (!existing.length) {
+        for (const ex of schede[day]) {
+          await supa.from("exercises").insert([{
+            session_id: currentSession.id,
+            name: ex.nome,
+            muscolo: ex.muscolo,
+            series: JSON.stringify([])
+          }]);
+        }
+      }
+
       loadSessionUI(day);
     }
     window.startSession = startSession;
@@ -173,21 +168,24 @@
       const c = document.getElementById("session");
       c.innerHTML = `<h2>Sessione Giorno ${day}</h2>`;
       const { data: exs } = await supa.from("exercises").select("*").eq("session_id", currentSession.id);
-      const allEx = exs?.length ? exs : schede[day];
-      for (const ex of allEx) {
-        const series = ex.series ? JSON.parse(ex.series) : [];
+
+      for (const ex of exs) {
+        const serie = ex.series ? JSON.parse(ex.series) : [];
+        const base = schede[day].find(s => s.nome === ex.name) || {};
         c.innerHTML += `
-        <div class="exercise" data-name="${ex.name}">
-          <h3>${ex.name}</h3>
-          <small><b>${ex.muscolo}</b></small>
-          <small>👉 ${ex.come || ""}</small>
-          <small>⚠️ ${ex.att || ""}</small>
-          Rip: <input type="number" class="rip" min="1"> 
-          Peso: <input type="number" class="peso" min="0"> 
-          <button onclick="addSerie(this)">➕ Serie</button>
-          <button onclick="startTimer(this,60)">⏱️ Recupero</button>
-          <div class="series-list">${series.map(s=>`<div>${s.rip}x${s.peso}kg <button class="delete-serie" onclick="deleteSerie(this)">🗑</button></div>`).join('')}</div>
-        </div>`;
+          <div class="exercise" data-name="${ex.name}">
+            <h3>${ex.name || "Senza nome"}</h3>
+            <small><b>${ex.muscolo || base.muscolo || "Muscolo non definito"}</b></small>
+            <small>👉 ${base.come || ""}</small>
+            <small>⚠️ ${base.att || ""}</small>
+            Rip: <input type="number" class="rip" min="1">
+            Peso: <input type="number" class="peso" min="0">
+            <button onclick="addSerie(this)">➕ Serie</button>
+            <button onclick="startTimer(this,60)">⏱️ Recupero</button>
+            <div class="series-list">
+              ${serie.map(s=>`<div>${s.rip}x${s.peso}kg <button class="delete-serie" onclick="deleteSerie(this)">🗑</button></div>`).join("")}
+            </div>
+          </div>`;
       }
       c.innerHTML += `<button onclick="backToMenu()">⬅️ Torna</button>`;
       c.classList.remove("hidden");
@@ -216,11 +214,10 @@
         const match = d.textContent.match(/(\d+)x(\d+)/);
         return { rip: match[1], peso: match[2] };
       });
-      const { data: exist } = await supa.from("exercises").select("*").eq("session_id", currentSession.id).eq("name", name);
+      const { data: exist } = await supa.from("exercises")
+        .select("*").eq("session_id", currentSession.id).eq("name", name);
       if(exist.length){
         await supa.from("exercises").update({ series: JSON.stringify(series) }).eq("id", exist[0].id);
-      }else{
-        await supa.from("exercises").insert([{ session_id: currentSession.id, name, series: JSON.stringify(series) }]);
       }
     }
 
@@ -231,22 +228,19 @@
       sticky.style.display="block";
       sticky.textContent = `⏱️ ${t}s`;
       timerInterval = setInterval(()=>{
-        t--; sticky.textContent = `⏱️ ${t}s`;
+        t--;
+        sticky.textContent = `⏱️ ${t}s`;
         if(t<=0){ clearInterval(timerInterval); sticky.style.display="none"; }
       },1000);
-    }
-
-    async function showDashboard(){
-      alert("Dashboard in sviluppo: mostrerà i PR, i miglioramenti %, e il riepilogo muscolare 💪");
-    }
-    async function showHistory(){
-      alert("Storico con modifica/eliminazione in arrivo 👷‍♂️");
     }
 
     function backToMenu(){
       document.querySelectorAll(".container").forEach(c=>c.classList.add("hidden"));
       document.getElementById("menu").classList.remove("hidden");
     }
+
+    function showDashboard(){ alert("Dashboard in arrivo 💪"); }
+    function showHistory(){ alert("Storico in sviluppo 🧠"); }
   </script>
 </body>
 </html>
