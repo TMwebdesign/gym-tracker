@@ -2,40 +2,42 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<title>🏋️ Gym Tracker PRO+</title>
+<title>🏋️ Gym Tracker PRO Ultra</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 :root {
-  --green:#28a745; --bg:#111; --fg:#eee; --soft:#1c1c1c;
+  --green:#28a745; --bg:#0f0f0f; --fg:#eee; --soft:#1a1a1a;
 }
-body {font-family:'Segoe UI',sans-serif;margin:0;background:var(--bg);color:var(--fg);transition:all .3s;}
-header {background:var(--soft);padding:1rem;text-align:center;font-size:1.4rem;font-weight:bold;}
-button {margin:.3rem;padding:.6rem 1rem;border:none;border-radius:8px;background:var(--green);color:#fff;font-weight:600;cursor:pointer;transition:.3s;}
-button:hover {opacity:.85;}
-.container {max-width:900px;padding:1rem;margin:auto;animation:fadeIn .6s;}
-.exercise {border:1px solid #333;background:#181818;padding:.9rem;margin-bottom:.9rem;border-radius:8px;transition:.3s;}
-.exercise.fadeIn {animation:fadeIn .4s;}
-@keyframes fadeIn {from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
-.series-list div {background:#222;padding:.3rem;margin:.2rem 0;border-radius:5px;display:flex;justify-content:space-between;align-items:center;animation:fadeIn .3s;}
-.series-list div span {font-size:.8rem;color:#bbb;}
-.summary-box {background:#222;border-radius:10px;padding:1rem;margin-top:1rem;text-align:center;box-shadow:0 0 15px rgba(0,0,0,.3);}
+body{font-family:'Segoe UI',sans-serif;margin:0;background:var(--bg);color:var(--fg);transition:.3s;}
+header{background:var(--soft);padding:1rem;text-align:center;font-size:1.4rem;font-weight:bold;}
+button{margin:.3rem;padding:.6rem 1rem;border:none;border-radius:8px;background:var(--green);color:#fff;font-weight:600;cursor:pointer;transition:.3s;}
+button:hover{opacity:.85;}
+.container{max-width:900px;padding:1rem;margin:auto;animation:fadeIn .5s;}
+.hidden{display:none;}
+.exercise{border:1px solid #333;background:#181818;padding:.9rem;margin-bottom:.9rem;border-radius:8px;transition:.3s;}
+.exercise.fadeIn{animation:fadeIn .3s;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+.series-list div{background:#222;padding:.3rem;margin:.2rem 0;border-radius:5px;display:flex;justify-content:space-between;align-items:center;}
+.series-list div span{font-size:.8rem;color:#bbb;}
 .muscolo-Petto{border-left:5px solid #e53935;}
 .muscolo-Spalle{border-left:5px solid #ff9800;}
 .muscolo-Dorso{border-left:5px solid #2196f3;}
 .muscolo-Gambe{border-left:5px solid #4caf50;}
 .muscolo-Addome{border-left:5px solid #ffeb3b;}
 #loader{position:fixed;top:0;left:0;width:100%;height:100%;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.4rem;z-index:999;display:none;}
+#stickyTimer{position:fixed;left:20px;bottom:20px;background:#222;color:#0f0;padding:.8rem;border-radius:10px;font-weight:bold;display:none;}
 .planner{width:100%;border-collapse:collapse;margin-top:1rem;}
 .planner th,.planner td{border:1px solid #555;padding:.5rem;text-align:center;}
 .planner th{background:#222;}
 </style>
 </head>
 <body>
-<header>🏋️ Gym Tracker PRO+</header>
+<header>🏋️ Gym Tracker PRO Ultra</header>
 
 <div id="loader">🔥 Niente scuse, solo progressi 💪</div>
+<div id="stickyTimer"></div>
 
 <div class="container" id="menu">
   <button onclick="startSession('A')">▶ Giorno A</button>
@@ -48,25 +50,33 @@ button:hover {opacity:.85;}
 <div class="container hidden" id="dashboard"></div>
 <div class="container hidden" id="history"></div>
 
+<audio id="beep"><source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg"></audio>
+
 <script>
 const supa=supabase.createClient("https://oyzouvusoysuhylijfdm.supabase.co","sb_publishable_xsQgX8-AhpHzK0Cn4rfW9A_rzF6fVEm");
-let currentSession=null,isExisting=false,sessionId=null;
+let currentSession=null,isExisting=false,sessionId=null,timerInt=null,timeLeft=0,isDynamic=false;
 
 const schede={
-A:[{nome:"Chest Press",muscoli:"Petto"},{nome:"Shoulder Press",muscoli:"Spalle"},{nome:"Pectoral Machine",muscoli:"Petto"},{nome:"Alzate Laterali",muscoli:"Spalle"},{nome:"Crunch",muscoli:"Addome"}],
-B:[{nome:"Lat Machine",muscoli:"Dorso"},{nome:"Rematore Macchina",muscoli:"Dorso"},{nome:"Leg Press",muscoli:"Gambe"},{nome:"Leg Curl",muscoli:"Gambe"},{nome:"Plank",muscoli:"Addome"}]
+A:[{nome:"Chest Press",muscoli:"Petto",come:"Spingi in avanti mantenendo i gomiti a 90°.",att:"Non estendere troppo le braccia."},
+   {nome:"Shoulder Press",muscoli:"Spalle",come:"Spingi sopra la testa con schiena aderente.",att:"Non inarcare la schiena."},
+   {nome:"Pectoral Machine",muscoli:"Petto",come:"Chiudi le braccia come un abbraccio.",att:"Non sbattere al centro."},
+   {nome:"Alzate Laterali",muscoli:"Spalle",come:"Braccia piegate, solleva fino alle spalle.",att:"Non oltre i 90°."},
+   {nome:"Crunch",muscoli:"Addome",come:"Contrai l’addome.",att:"Non tirare il collo."}],
+B:[{nome:"Lat Machine",muscoli:"Dorso",come:"Tira la barra al petto.",att:"Non oscillare con la schiena."},
+   {nome:"Rematore Macchina",muscoli:"Dorso",come:"Tira i manici verso l’addome.",att:"Movimento controllato."},
+   {nome:"Leg Press",muscoli:"Gambe",come:"Spingi coi talloni.",att:"Non stendere del tutto le gambe."},
+   {nome:"Leg Curl",muscoli:"Gambe",come:"Piega le gambe lentamente.",att:"Contrai i femorali."},
+   {nome:"Plank",muscoli:"Addome",come:"Corpo in linea, addome contratto.",att:"Non inarcare la schiena."}]
 };
 
-function showLoader(show=true){document.getElementById("loader").style.display=show?"flex":"none";}
+function showLoader(x=true){document.getElementById("loader").style.display=x?"flex":"none";}
 
 async function startSession(day){
   showLoader(true);
-  document.getElementById("menu").classList.add("hidden");
-  const now=new Date();
-  const since=new Date(now.getTime()-24*60*60*1000).toISOString();
+  const since=new Date(Date.now()-24*3600*1000).toISOString();
   const {data}=await supa.from("sessions").select("*").eq("day",day).gte("date",since).limit(1);
-  if(data&&data.length>0){currentSession=data[0];isExisting=true;sessionId=currentSession.id;}
-  else{currentSession={day,date:now.toISOString(),exercises:[]};isExisting=false;}
+  if(data&&data.length){currentSession=data[0];isExisting=true;sessionId=data[0].id;}
+  else{currentSession={day,date:new Date().toISOString(),exercises:[],notes:""};isExisting=false;}
   showLoader(false);
   renderSession(day);
 }
@@ -78,45 +88,46 @@ function renderSession(day){
   for(const ex of exercises){
     const list=(ex.series||[]).map((s,i)=>makeSerieHTML(s,ex.nome,i)).join("");
     c.innerHTML+=`
-      <div class="exercise muscolo-${ex.muscoli}">
-        <h3>${ex.nome} <small>(${ex.muscoli})</small></h3>
-        Rip:<input type="number" class="rip"> Peso:<input type="number" class="peso">
-        <button onclick="addSerie(this)">➕ Serie</button>
-        <div class="series-list">${list}</div>
-      </div>`;
+    <div class="exercise muscolo-${ex.muscoli}">
+      <h3>${ex.nome} <small>(${ex.muscoli})</small></h3>
+      <small>👉 ${ex.come||""}</small><br><small>⚠️ ${ex.att||""}</small><br>
+      Rip:<input type="number" class="rip"> Peso:<input type="number" class="peso">
+      <button onclick="addSerie(this)">➕ Serie</button>
+      <button onclick="startTimer(60)">⏱️ Recupero</button>
+      <button onclick="startDynamicTimer(4,30,60)">⏱️+ Dinamico</button>
+      <div class="series-list">${list}</div>
+    </div>`;
   }
   c.innerHTML+=`
-    <h3>Aggiungi esercizio personalizzato</h3>
-    <input type="text" id="newName" placeholder="Nome esercizio">
-    <select id="newMuscle">
-      <option>Petto</option><option>Spalle</option><option>Dorso</option><option>Gambe</option><option>Addome</option>
-    </select>
-    <select id="preset">
-      <option value="">Senza preset</option>
-      <option value="3x12">3x12</option>
-      <option value="4x8">4x8</option>
-      <option value="5x5">5x5</option>
-    </select>
-    <button onclick="addCustomExercise()">➕ Aggiungi</button>
-    <button onclick="saveSession()">💾 Salva</button>
-    <button onclick="backToMenu()">⬅️ Indietro</button>`;
+  <h3>Aggiungi esercizio</h3>
+  <input id="newName" placeholder="Nome">
+  <select id="newMuscle">
+    <option>Petto</option><option>Spalle</option><option>Dorso</option><option>Gambe</option><option>Addome</option>
+  </select>
+  <select id="preset">
+    <option value="">Senza preset</option><option value="3x12">3x12</option><option value="4x8">4x8</option><option value="5x5">5x5</option>
+  </select>
+  <button onclick="addCustomExercise()">➕</button>
+  <h3>Note</h3><textarea id="notes" rows="3" style="width:100%">${currentSession.notes||""}</textarea><br>
+  <button onclick="saveSession()">💾 Salva</button>
+  <button onclick="showSummary()">📋 Riepilogo</button>
+  <button onclick="backToMenu()">⬅️ Indietro</button>`;
+  document.getElementById("menu").classList.add("hidden");
   c.classList.remove("hidden");
 }
 
-function makeSerieHTML(txt,exName,i){
-  return `<div>${txt}<span><button style="background:none;color:#ff4444" onclick="delSerie('${exName}',${i})">🗑</button></span></div>`;
-}
+function makeSerieHTML(txt,exName,i){return `<div>${txt}<span><button style="background:none;color:#ff4444" onclick="delSerie('${exName}',${i})">🗑</button></span></div>`;}
 
 function addSerie(btn){
   const p=btn.parentElement;
-  const rip=p.querySelector(".rip").value;
-  const peso=p.querySelector(".peso").value;
+  const rip=p.querySelector(".rip").value,peso=p.querySelector(".peso").value;
   if(!rip||!peso)return alert("Inserisci rip e peso");
   const name=p.querySelector("h3").innerText.split("(")[0].trim();
   const sTxt=`${rip}x${peso}kg`;
-  const ex=currentSession.exercises.find(e=>e.nome===name);
-  if(ex)ex.series.push(sTxt); else currentSession.exercises.push({nome:name,muscoli:"Altro",series:[sTxt]});
-  p.querySelector(".series-list").innerHTML+=makeSerieHTML(sTxt,name,0);
+  let ex=currentSession.exercises.find(e=>e.nome===name);
+  if(!ex){ex={nome:name,muscoli:"Altro",series:[]};currentSession.exercises.push(ex);}
+  ex.series.push(sTxt);
+  p.querySelector(".series-list").innerHTML+=makeSerieHTML(sTxt,name,ex.series.length-1);
 }
 
 function delSerie(exName,i){
@@ -127,60 +138,70 @@ function delSerie(exName,i){
 }
 
 function addCustomExercise(){
-  const name=document.getElementById("newName").value;
-  const muscolo=document.getElementById("newMuscle").value;
-  const preset=document.getElementById("preset").value;
-  if(!name)return alert("Inserisci un nome");
+  const name=document.getElementById("newName").value,muscolo=document.getElementById("newMuscle").value,preset=document.getElementById("preset").value;
+  if(!name)return alert("Inserisci nome");
   const ex={nome:name,muscoli:muscolo,series:[]};
-  if(preset){
-    const [serie,rip]=preset.split("x");
-    for(let i=0;i<serie;i++) ex.series.push(`${rip}x?kg`);
-  }
+  if(preset){const[n,r]=preset.split("x");for(let i=0;i<n;i++)ex.series.push(`${r}x?kg`);}
   currentSession.exercises.push(ex);
   renderSession(currentSession.day);
 }
 
-async function saveSession(){
-  showLoader(true);
-  if(isExisting){
-    await supa.from("sessions").update({exercises:currentSession.exercises}).eq("id",sessionId);
-    alert("✅ Sessione aggiornata!");
-  }else{
-    const {data}=await supa.from("sessions").insert([currentSession]).select("id");
-    sessionId=data[0].id;isExisting=true;alert("✅ Nuova sessione salvata!");
+function startTimer(sec){showStickyTimer(`Recupero: ${sec}s`);timeLeft=sec;isDynamic=false;countTimer();}
+function startDynamicTimer(serie,exec,rest){
+  if(confirm(`Esegui ${serie} serie automatiche?`)){
+    let total=serie*(exec+rest);showStickyTimer("⏱️ Dinamico attivo");
+    isDynamic=true;timeLeft=5;timerInt=setInterval(()=>{
+      document.getElementById("stickyTimer").textContent=`Serie dinamica (${timeLeft}s)`;
+      if(timeLeft<=0)clearInterval(timerInt);
+      timeLeft--;
+    },1000);
   }
-  showLoader(false);
 }
+function countTimer(){
+  clearInterval(timerInt);
+  timerInt=setInterval(()=>{
+    document.getElementById("stickyTimer").textContent=`⏱️ ${timeLeft}s`;
+    if(timeLeft<=5&&timeLeft>0)document.getElementById("beep").play();
+    if(timeLeft<=0)clearInterval(timerInt);
+    timeLeft--;
+  },1000);
+}
+function showStickyTimer(txt){const el=document.getElementById("stickyTimer");el.textContent=txt;el.style.display="block";}
+
+async function saveSession(){
+  currentSession.notes=document.getElementById("notes").value;
+  const totalSeries=currentSession.exercises.reduce((a,b)=>a+(b.series?b.series.length:0),0);
+  const totalWeight=currentSession.exercises.reduce((a,b)=>a+b.series.filter(x=>x.includes("kg")).reduce((s,t)=>s+parseInt(t.split("x")[1]),0),0);
+  currentSession.total_series=totalSeries;
+  currentSession.total_volume=totalWeight;
+  if(isExisting){await supa.from("sessions").update(currentSession).eq("id",sessionId);}
+  else{const {data}=await supa.from("sessions").insert([currentSession]).select("id");sessionId=data[0].id;isExisting=true;}
+  alert("✅ Sessione salvata!");
+}
+
+function showSummary(){
+  const vol=currentSession.total_volume||0,ser=currentSession.total_series||0;
+  const msg=`Hai completato ${ser} serie, volume totale ${vol}kg.\n${coachFeedback(vol)}`;
+  alert(msg);
+}
+function coachFeedback(v){return v>1000?"💪 Ottimo carico!":"🔥 Bene! Prossima volta spingi di più!";}
 
 async function showDashboard(){
   showLoader(true);
+  const d=document.getElementById("dashboard");
   document.getElementById("menu").classList.add("hidden");
-  const d=document.getElementById("dashboard");d.classList.remove("hidden");
+  d.classList.remove("hidden");
   const {data}=await supa.from("sessions").select("*").order("date",{ascending:true});
   showLoader(false);
-  if(!data||!data.length){d.innerHTML="<p>Nessuna sessione.</p>";return;}
-
-  // 🔹 Calcola % miglioramento medio per esercizio
-  const map={};
-  data.forEach(s=>{
-    s.exercises.forEach(e=>{
-      const avg=e.series.filter(x=>x.includes("kg")).reduce((a,b)=>a+parseInt(b.split("x")[1]),0)/(e.series.length||1);
-      if(!map[e.nome]) map[e.nome]=[];
-      map[e.nome].push(avg);
-    });
-  });
-  const improve=[];
-  for(const k in map){if(map[k].length>1){const diff=((map[k].at(-1)-map[k].at(-2))/map[k].at(-2))*100;improve.push(`${k}: ${diff>0?'+':''}${diff.toFixed(1)}%`);}}
-
+  if(!data.length){d.innerHTML="<p>Nessuna sessione</p>";return;}
+  let labels=data.map(s=>new Date(s.date).toLocaleDateString());
+  let values=data.map(s=>s.total_series||0);
+  d.innerHTML="<h2>📊 Dashboard</h2><canvas id='chart'></canvas><div id='planner'></div><button onclick='backToMenu()'>⬅️</button>";
+  new Chart(document.getElementById("chart"),{type:"line",data:{labels,datasets:[{label:'Serie Totali',data:values,borderColor:'#28a745'}]}});
   const last7=data.slice(-7);
-  let table=`<h2>📆 Planner Settimanale</h2><table class="planner"><tr><th>Data</th><th>Sessione</th><th>Stato</th><th>Miglioramento</th></tr>`;
-  last7.forEach(s=>{
-    const day=new Date(s.date).toLocaleDateString();
-    const dayType=s.day;
-    table+=`<tr><td>${day}</td><td>${dayType}</td><td>✅</td><td>${improve.join("<br>")}</td></tr>`;
-  });
-  table+="</table>";
-  d.innerHTML=table+`<button onclick="backToMenu()">⬅️ Indietro</button>`;
+  let table=`<h3>📅 Planner</h3><table class='planner'><tr><th>Data</th><th>Sessione</th><th>Stato</th></tr>`;
+  last7.forEach(s=>table+=`<tr><td>${new Date(s.date).toLocaleDateString()}</td><td>${s.day}</td><td>✅</td></tr>`);
+  d.querySelector("#planner").innerHTML=table+"</table>";
 }
 
 async function showHistory(){
@@ -193,15 +214,12 @@ async function showHistory(){
   h.innerHTML="<h2>📜 Storico</h2>";
   data.forEach(s=>{
     h.innerHTML+=`<div><b>${new Date(s.date).toLocaleDateString()} (${s.day})</b><br>
-    ${s.exercises.map(e=>`${e.nome}: ${e.series.join(", ")}`).join("<br>")}<hr></div>`;
+    ${s.exercises.map(e=>`${e.nome}: ${e.series.join(", ")}`).join("<br>")}
+    <br><i>${s.notes||""}</i><hr></div>`;
   });
   h.innerHTML+=`<button onclick="backToMenu()">⬅️</button>`;
 }
-
-function backToMenu(){
-  document.querySelectorAll(".container").forEach(c=>c.classList.add("hidden"));
-  document.getElementById("menu").classList.remove("hidden");
-}
+function backToMenu(){document.querySelectorAll(".container").forEach(c=>c.classList.add("hidden"));document.getElementById("menu").classList.remove("hidden");}
 </script>
 </body>
 </html>
