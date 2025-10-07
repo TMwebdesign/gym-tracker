@@ -1,247 +1,207 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8">
-  <title>🏋️ Gym Tracker PRO</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    :root {
-      --green:#28a745; --bg:#111; --fg:#eee;
-      --soft:#1c1c1c; --warn:#ff9800; --danger:#e53935;
-    }
-    body { font-family:'Segoe UI',sans-serif; margin:0; background:var(--bg); color:var(--fg);}
-    header { background:var(--soft); padding:1rem; text-align:center; font-size:1.4rem; font-weight:bold;}
-    button {
-      margin:.3rem; padding:.6rem 1rem; border:none; border-radius:8px;
-      background:var(--green); color:#fff; font-weight:600; cursor:pointer; transition:.3s;
-    }
-    button:hover { opacity:.85; }
-    .container { max-width:900px; padding:1rem; margin:auto;}
-    .exercise { border:1px solid #333; background:#181818; padding:.9rem; margin-bottom:.9rem; border-radius:8px;}
-    input { padding:.4rem; margin:.2rem; width:80px; border-radius:4px; border:1px solid #444; background:#222; color:#fff;}
-    .series-list { margin:.5rem 0; font-size:.9rem; color:#ccc;}
-    .timer { display:block; font-weight:bold; color:#0f0; margin-top:.5rem;}
-    .progress-bar { height:8px; border-radius:4px; background:#333; overflow:hidden; margin-top:.4rem;}
-    .progress-inner { height:100%; width:0%; background:var(--green); transition:width 1s linear;}
-    .hidden { display:none; }
-    canvas { background:#fff; border-radius:8px; margin-top:1rem; }
-    .summary-box {
-      background:#222; border-radius:10px; padding:1rem; margin-top:1rem; text-align:center;
-      box-shadow:0 0 15px rgba(0,0,0,.3);
-    }
-    .summary-box h3 { color:#7aff8f; }
-    .bottom-nav {
-      position:fixed; bottom:0; left:0; right:0; background:#222;
-      display:flex; justify-content:space-around; padding:.5rem 0; border-top:1px solid #444;
-    }
-    .bottom-nav button { flex:1; background:none; color:#ccc; border:none; font-size:1rem; }
-    .bottom-nav button.active { color:var(--green);}
-  </style>
+<meta charset="UTF-8">
+<title>🏋️ Gym Tracker PRO+</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root {
+  --green:#28a745; --bg:#111; --fg:#eee; --soft:#1c1c1c;
+}
+body {font-family:'Segoe UI',sans-serif;margin:0;background:var(--bg);color:var(--fg);transition:all .3s;}
+header {background:var(--soft);padding:1rem;text-align:center;font-size:1.4rem;font-weight:bold;}
+button {margin:.3rem;padding:.6rem 1rem;border:none;border-radius:8px;background:var(--green);color:#fff;font-weight:600;cursor:pointer;transition:.3s;}
+button:hover {opacity:.85;}
+.container {max-width:900px;padding:1rem;margin:auto;animation:fadeIn .6s;}
+.exercise {border:1px solid #333;background:#181818;padding:.9rem;margin-bottom:.9rem;border-radius:8px;transition:.3s;}
+.exercise.fadeIn {animation:fadeIn .4s;}
+@keyframes fadeIn {from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+.series-list div {background:#222;padding:.3rem;margin:.2rem 0;border-radius:5px;display:flex;justify-content:space-between;align-items:center;animation:fadeIn .3s;}
+.series-list div span {font-size:.8rem;color:#bbb;}
+.summary-box {background:#222;border-radius:10px;padding:1rem;margin-top:1rem;text-align:center;box-shadow:0 0 15px rgba(0,0,0,.3);}
+.muscolo-Petto{border-left:5px solid #e53935;}
+.muscolo-Spalle{border-left:5px solid #ff9800;}
+.muscolo-Dorso{border-left:5px solid #2196f3;}
+.muscolo-Gambe{border-left:5px solid #4caf50;}
+.muscolo-Addome{border-left:5px solid #ffeb3b;}
+#loader{position:fixed;top:0;left:0;width:100%;height:100%;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.4rem;z-index:999;display:none;}
+.planner{width:100%;border-collapse:collapse;margin-top:1rem;}
+.planner th,.planner td{border:1px solid #555;padding:.5rem;text-align:center;}
+.planner th{background:#222;}
+</style>
 </head>
 <body>
-  <header>🏋️ Gym Tracker PRO</header>
+<header>🏋️ Gym Tracker PRO+</header>
 
-  <div class="container" id="menu">
-    <button onclick="startSession('A')">▶ Giorno A</button>
-    <button onclick="startSession('B')">▶ Giorno B</button>
-    <button onclick="showDashboard()">📊 Dashboard</button>
-    <button onclick="showHistory()">📜 Storico</button>
-  </div>
+<div id="loader">🔥 Niente scuse, solo progressi 💪</div>
 
-  <div class="container hidden" id="session"></div>
-  <div class="container hidden" id="summary"></div>
-  <div class="container hidden" id="dashboard"></div>
-  <div class="container hidden" id="history"></div>
+<div class="container" id="menu">
+  <button onclick="startSession('A')">▶ Giorno A</button>
+  <button onclick="startSession('B')">▶ Giorno B</button>
+  <button onclick="showDashboard()">📊 Dashboard</button>
+  <button onclick="showHistory()">📜 Storico</button>
+</div>
 
-  <div class="bottom-nav">
-    <button onclick="backToMenu()">🏠</button>
-    <button onclick="showDashboard()">📈</button>
-    <button onclick="showHistory()">📜</button>
-    <button onclick="toggleTheme()">🌙</button>
-  </div>
+<div class="container hidden" id="session"></div>
+<div class="container hidden" id="dashboard"></div>
+<div class="container hidden" id="history"></div>
 
-  <audio id="beep">
-    <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
-  </audio>
+<script>
+const supa=supabase.createClient("https://oyzouvusoysuhylijfdm.supabase.co","sb_publishable_xsQgX8-AhpHzK0Cn4rfW9A_rzF6fVEm");
+let currentSession=null,isExisting=false,sessionId=null;
 
-  <script>
-    // 🗝️ Supabase
-    const supa = supabase.createClient(
-      "https://oyzouvusoysuhylijfdm.supabase.co",
-      "sb_publishable_xsQgX8-AhpHzK0Cn4rfW9A_rzF6fVEm"
-    );
+const schede={
+A:[{nome:"Chest Press",muscoli:"Petto"},{nome:"Shoulder Press",muscoli:"Spalle"},{nome:"Pectoral Machine",muscoli:"Petto"},{nome:"Alzate Laterali",muscoli:"Spalle"},{nome:"Crunch",muscoli:"Addome"}],
+B:[{nome:"Lat Machine",muscoli:"Dorso"},{nome:"Rematore Macchina",muscoli:"Dorso"},{nome:"Leg Press",muscoli:"Gambe"},{nome:"Leg Curl",muscoli:"Gambe"},{nome:"Plank",muscoli:"Addome"}]
+};
 
-    let currentSession=null,totalSeconds=0,totalTimer=null;
+function showLoader(show=true){document.getElementById("loader").style.display=show?"flex":"none";}
 
-    const schede={
-      A:[
-        {nome:"Chest Press",muscoli:"Petto"},
-        {nome:"Shoulder Press",muscoli:"Spalle"},
-        {nome:"Pectoral Machine",muscoli:"Petto"},
-        {nome:"Alzate Laterali",muscoli:"Spalle"},
-        {nome:"Crunch",muscoli:"Addome"}
-      ],
-      B:[
-        {nome:"Lat Machine",muscoli:"Dorso"},
-        {nome:"Rematore Macchina",muscoli:"Dorso"},
-        {nome:"Leg Press",muscoli:"Gambe"},
-        {nome:"Leg Curl",muscoli:"Gambe"},
-        {nome:"Plank",muscoli:"Addome"}
-      ]
-    };
+async function startSession(day){
+  showLoader(true);
+  document.getElementById("menu").classList.add("hidden");
+  const now=new Date();
+  const since=new Date(now.getTime()-24*60*60*1000).toISOString();
+  const {data}=await supa.from("sessions").select("*").eq("day",day).gte("date",since).limit(1);
+  if(data&&data.length>0){currentSession=data[0];isExisting=true;sessionId=currentSession.id;}
+  else{currentSession={day,date:now.toISOString(),exercises:[]};isExisting=false;}
+  showLoader(false);
+  renderSession(day);
+}
 
-    // 🚀 Avvia sessione
-    async function startSession(day){
-      currentSession={day,date:new Date().toISOString(),exercises:[]};
-      totalSeconds=0;
-      document.getElementById("menu").classList.add("hidden");
-      const c=document.getElementById("session");
-      c.innerHTML=`<h2>Sessione Giorno ${day}</h2><div id="totalTime">⏱ 0:00</div>`;
-      totalTimer=setInterval(()=>{totalSeconds++;document.getElementById("totalTime").innerText=`⏱ ${Math.floor(totalSeconds/60)}:${(totalSeconds%60).toString().padStart(2,"0")}`;},1000);
+function renderSession(day){
+  const c=document.getElementById("session");
+  c.innerHTML=`<h2>Sessione Giorno ${day}</h2>`;
+  const exercises=currentSession.exercises.length?currentSession.exercises:schede[day];
+  for(const ex of exercises){
+    const list=(ex.series||[]).map((s,i)=>makeSerieHTML(s,ex.nome,i)).join("");
+    c.innerHTML+=`
+      <div class="exercise muscolo-${ex.muscoli}">
+        <h3>${ex.nome} <small>(${ex.muscoli})</small></h3>
+        Rip:<input type="number" class="rip"> Peso:<input type="number" class="peso">
+        <button onclick="addSerie(this)">➕ Serie</button>
+        <div class="series-list">${list}</div>
+      </div>`;
+  }
+  c.innerHTML+=`
+    <h3>Aggiungi esercizio personalizzato</h3>
+    <input type="text" id="newName" placeholder="Nome esercizio">
+    <select id="newMuscle">
+      <option>Petto</option><option>Spalle</option><option>Dorso</option><option>Gambe</option><option>Addome</option>
+    </select>
+    <select id="preset">
+      <option value="">Senza preset</option>
+      <option value="3x12">3x12</option>
+      <option value="4x8">4x8</option>
+      <option value="5x5">5x5</option>
+    </select>
+    <button onclick="addCustomExercise()">➕ Aggiungi</button>
+    <button onclick="saveSession()">💾 Salva</button>
+    <button onclick="backToMenu()">⬅️ Indietro</button>`;
+  c.classList.remove("hidden");
+}
 
-      for(const ex of schede[day]){
-        c.innerHTML+=`
-          <div class="exercise">
-            <h3>${ex.nome} <small>(${ex.muscoli})</small></h3>
-            Rip:<input type="number" class="rip"> Peso:<input type="number" class="peso">
-            <button onclick="addSerie(this)">➕</button>
-            <div class="series-list"></div>
-          </div>`;
-      }
-      c.innerHTML+=`<button onclick="saveSession()">💾 Salva e mostra riepilogo</button>
-                    <button onclick="backToMenu()">⬅️ Indietro</button>`;
-      c.classList.remove("hidden");
-    }
+function makeSerieHTML(txt,exName,i){
+  return `<div>${txt}<span><button style="background:none;color:#ff4444" onclick="delSerie('${exName}',${i})">🗑</button></span></div>`;
+}
 
-    function addSerie(btn){
-      const p=btn.parentElement;
-      const rip=p.querySelector(".rip").value;
-      const peso=p.querySelector(".peso").value;
-      if(!rip||!peso)return alert("Inserisci rip e peso");
-      p.querySelector(".series-list").innerHTML+=`<div>${rip}x${peso}kg</div>`;
-      p.querySelector(".rip").value="";
-      p.querySelector(".peso").value="";
-    }
+function addSerie(btn){
+  const p=btn.parentElement;
+  const rip=p.querySelector(".rip").value;
+  const peso=p.querySelector(".peso").value;
+  if(!rip||!peso)return alert("Inserisci rip e peso");
+  const name=p.querySelector("h3").innerText.split("(")[0].trim();
+  const sTxt=`${rip}x${peso}kg`;
+  const ex=currentSession.exercises.find(e=>e.nome===name);
+  if(ex)ex.series.push(sTxt); else currentSession.exercises.push({nome:name,muscoli:"Altro",series:[sTxt]});
+  p.querySelector(".series-list").innerHTML+=makeSerieHTML(sTxt,name,0);
+}
 
-    // 💾 Salva su Supabase
-    async function saveSession(){
-      clearInterval(totalTimer);
-      const ex=document.querySelectorAll(".exercise");
-      const data=[];
-      ex.forEach(e=>{
-        const name=e.querySelector("h3").innerText;
-        const s=Array.from(e.querySelectorAll(".series-list div")).map(d=>d.innerText);
-        if(s.length>0)data.push({name,series:s});
-      });
-      if(data.length===0)return alert("Nessuna serie registrata");
-      currentSession.exercises=data;
-      await supa.from("sessions").insert([currentSession]);
-      showSummary(data);
-    }
+function delSerie(exName,i){
+  const ex=currentSession.exercises.find(e=>e.nome===exName);
+  if(!ex)return;
+  ex.series.splice(i,1);
+  renderSession(currentSession.day);
+}
 
-    // 🧾 Riepilogo automatico
-    async function showSummary(exercises){
-      const s=document.getElementById("summary");
-      document.getElementById("session").classList.add("hidden");
-      s.classList.remove("hidden");
+function addCustomExercise(){
+  const name=document.getElementById("newName").value;
+  const muscolo=document.getElementById("newMuscle").value;
+  const preset=document.getElementById("preset").value;
+  if(!name)return alert("Inserisci un nome");
+  const ex={nome:name,muscoli:muscolo,series:[]};
+  if(preset){
+    const [serie,rip]=preset.split("x");
+    for(let i=0;i<serie;i++) ex.series.push(`${rip}x?kg`);
+  }
+  currentSession.exercises.push(ex);
+  renderSession(currentSession.day);
+}
 
-      let totalSeries=0,totalWeight=0;
-      const groups={Petto:0,Spalle:0,Dorso:0,Gambe:0,Addome:0};
-      exercises.forEach(e=>{
-        const g=Object.keys(groups).find(k=>e.name.toLowerCase().includes(k.toLowerCase()));
-        if(g)groups[g]+=e.series.length;
-        e.series.forEach(s=>{
-          const match=s.match(/(\d+)x(\d+)/);
-          if(match){
-            totalSeries++;
-            totalWeight+=parseInt(match[1])*parseInt(match[2]);
-          }
-        });
-      });
-      const totalMin=Math.floor(totalSeconds/60);
-      const intensity=totalSeries>25?8.5:6;
-      const calories=(intensity*70*(totalSeconds/3600)).toFixed(0);
+async function saveSession(){
+  showLoader(true);
+  if(isExisting){
+    await supa.from("sessions").update({exercises:currentSession.exercises}).eq("id",sessionId);
+    alert("✅ Sessione aggiornata!");
+  }else{
+    const {data}=await supa.from("sessions").insert([currentSession]).select("id");
+    sessionId=data[0].id;isExisting=true;alert("✅ Nuova sessione salvata!");
+  }
+  showLoader(false);
+}
 
-      // 🏆 PR storico e sessione max
-      const {data:history}=await supa.from("sessions").select("*");
-      let maxWeight=0,maxTime=0;
-      history?.forEach(sess=>{
-        let localWeight=0;
-        sess.exercises.forEach(e=>e.series.forEach(s=>{
-          const m=s.match(/(\d+)x(\d+)/);
-          if(m)localWeight+=parseInt(m[1])*parseInt(m[2]);
-        }));
-        if(localWeight>maxWeight)maxWeight=localWeight;
-        const timeEst=(sess.exercises.length*2+10)*2; // stima tempo storico
-        if(timeEst>maxTime)maxTime=timeEst;
-      });
+async function showDashboard(){
+  showLoader(true);
+  document.getElementById("menu").classList.add("hidden");
+  const d=document.getElementById("dashboard");d.classList.remove("hidden");
+  const {data}=await supa.from("sessions").select("*").order("date",{ascending:true});
+  showLoader(false);
+  if(!data||!data.length){d.innerHTML="<p>Nessuna sessione.</p>";return;}
 
-      s.innerHTML=`
-        <div class="summary-box">
-          <h3>🏁 Riepilogo Sessione</h3>
-          <p>Durata: ${totalMin} min</p>
-          <p>Serie totali: ${totalSeries}</p>
-          <p>Peso totale sollevato: ${totalWeight} kg</p>
-          <p>Calorie stimate: ${calories} kcal</p>
-          <hr>
-          <p>🏆 Record storico carico massimo: ${maxWeight} kg</p>
-          <p>🕒 Sessione più lunga: ${Math.floor(maxTime/60)} min</p>
-          <canvas id="muscleChart" width="300" height="200"></canvas>
-          <button onclick="backToMenu()">🏠 Torna al menu</button>
-        </div>`;
-      
-      const ctx=document.getElementById("muscleChart").getContext("2d");
-      new Chart(ctx,{
-        type:"pie",
-        data:{
-          labels:Object.keys(groups),
-          datasets:[{data:Object.values(groups),backgroundColor:["#7aff8f","#ffc107","#03a9f4","#e91e63","#9c27b0"]}]
-        },
-        options:{plugins:{legend:{labels:{color:"#fff"}}}}
-      });
-    }
+  // 🔹 Calcola % miglioramento medio per esercizio
+  const map={};
+  data.forEach(s=>{
+    s.exercises.forEach(e=>{
+      const avg=e.series.filter(x=>x.includes("kg")).reduce((a,b)=>a+parseInt(b.split("x")[1]),0)/(e.series.length||1);
+      if(!map[e.nome]) map[e.nome]=[];
+      map[e.nome].push(avg);
+    });
+  });
+  const improve=[];
+  for(const k in map){if(map[k].length>1){const diff=((map[k].at(-1)-map[k].at(-2))/map[k].at(-2))*100;improve.push(`${k}: ${diff>0?'+':''}${diff.toFixed(1)}%`);}}
 
-    // 📊 Dashboard
-    async function showDashboard(){
-      document.getElementById("menu").classList.add("hidden");
-      const d=document.getElementById("dashboard");
-      d.classList.remove("hidden");
-      const {data}=await supa.from("sessions").select("*");
-      if(!data||!data.length){d.innerHTML="<p>Nessuna sessione registrata.</p>";return;}
-      const labels=data.map(s=>new Date(s.date).toLocaleDateString());
-      const values=data.map(s=>{
-        let w=0; s.exercises.forEach(e=>e.series.forEach(sr=>{
-          const m=sr.match(/(\d+)x(\d+)/); if(m)w+=parseInt(m[1])*parseInt(m[2]);
-        }));
-        return w;
-      });
-      d.innerHTML=`<h2>📈 Dashboard</h2><canvas id="chart"></canvas>
-                   <button onclick="backToMenu()">⬅️</button>`;
-      const ctx=document.getElementById("chart").getContext("2d");
-      new Chart(ctx,{type:"line",data:{labels,datasets:[{label:"Peso Totale",data:values,borderColor:"#7aff8f"}]}});
-    }
+  const last7=data.slice(-7);
+  let table=`<h2>📆 Planner Settimanale</h2><table class="planner"><tr><th>Data</th><th>Sessione</th><th>Stato</th><th>Miglioramento</th></tr>`;
+  last7.forEach(s=>{
+    const day=new Date(s.date).toLocaleDateString();
+    const dayType=s.day;
+    table+=`<tr><td>${day}</td><td>${dayType}</td><td>✅</td><td>${improve.join("<br>")}</td></tr>`;
+  });
+  table+="</table>";
+  d.innerHTML=table+`<button onclick="backToMenu()">⬅️ Indietro</button>`;
+}
 
-    // 📜 Storico
-    async function showHistory(){
-      document.getElementById("menu").classList.add("hidden");
-      const h=document.getElementById("history");
-      h.classList.remove("hidden");
-      const {data}=await supa.from("sessions").select("*").order("date",{ascending:false});
-      h.innerHTML="<h2>📜 Storico</h2>";
-      data.forEach(s=>{
-        h.innerHTML+=`<div><b>${new Date(s.date).toLocaleDateString()} (${s.day})</b><br>
-          ${s.exercises.map(e=>`${e.name}: ${e.series.join(", ")}`).join("<br>")}<hr></div>`;
-      });
-      h.innerHTML+=`<button onclick="backToMenu()">⬅️ Indietro</button>`;
-    }
+async function showHistory(){
+  showLoader(true);
+  const h=document.getElementById("history");
+  document.getElementById("menu").classList.add("hidden");
+  h.classList.remove("hidden");
+  const {data}=await supa.from("sessions").select("*").order("date",{ascending:false});
+  showLoader(false);
+  h.innerHTML="<h2>📜 Storico</h2>";
+  data.forEach(s=>{
+    h.innerHTML+=`<div><b>${new Date(s.date).toLocaleDateString()} (${s.day})</b><br>
+    ${s.exercises.map(e=>`${e.nome}: ${e.series.join(", ")}`).join("<br>")}<hr></div>`;
+  });
+  h.innerHTML+=`<button onclick="backToMenu()">⬅️</button>`;
+}
 
-    function backToMenu(){
-      document.querySelectorAll(".container").forEach(c=>c.classList.add("hidden"));
-      document.getElementById("menu").classList.remove("hidden");
-    }
-    function toggleTheme(){document.body.classList.toggle("light-mode");}
-  </script>
+function backToMenu(){
+  document.querySelectorAll(".container").forEach(c=>c.classList.add("hidden"));
+  document.getElementById("menu").classList.remove("hidden");
+}
+</script>
 </body>
 </html>
