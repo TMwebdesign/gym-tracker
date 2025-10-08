@@ -795,48 +795,333 @@ const app = {
     }
   },
 
-  // ... (resto del codice per dashboard, storico, ecc. rimane invariato)
-  async showDashboard() {
-    // Implementazione dashboard (come prima)
-    document.getElementById("menu").classList.add("hidden");
-    const dash = document.getElementById("dashboard");
-    dash.classList.remove("hidden");
-    
-    // Mostra loader
-    document.getElementById("loader").style.display = "flex";
-    
-    try {
-      const { data: sessions } = await supa.from("sessions").select("*").order("date", { ascending: true });
-      const { data: exercises } = await supa.from("exercises").select("*");
+async showDashboard() {
+  document.getElementById("menu").classList.add("hidden");
+  const dash = document.getElementById("dashboard");
+  dash.classList.remove("hidden");
+  
+  // Mostra loader
+  document.getElementById("loader").style.display = "flex";
+  
+  try {
+    const { data: sessions } = await supa.from("sessions").select("*").order("date", { ascending: true });
+    const { data: exercises } = await supa.from("exercises").select("*");
 
-      if (!sessions || sessions.length === 0) {
-        dash.innerHTML = `
-          <h2>📊 Dashboard</h2>
-          <p>Nessuna sessione registrata.</p>
-          <button class="btn" onclick="app.backToMenu()">⬅️ Torna</button>
-        `;
-        document.getElementById("loader").style.display = "none";
-        return;
-      }
-
-      // ... resto dell'implementazione dashboard ...
+    if (!sessions || sessions.length === 0) {
       dash.innerHTML = `
         <h2>📊 Dashboard</h2>
-        <p>Dashboard in sviluppo - Funzionalità completa in arrivo!</p>
+        <p>Nessuna sessione registrata.</p>
         <button class="btn" onclick="app.backToMenu()">⬅️ Torna</button>
       `;
-
-    } catch (e) {
-      dash.innerHTML = `
-        <h2>📊 Dashboard</h2>
-        <div class="error-msg">Errore nel caricamento dei dati: ${e.message}</div>
-        <button class="btn" onclick="app.backToMenu()">⬅️ Torna</button>
-      `;
+      document.getElementById("loader").style.display = "none";
+      return;
     }
-    
-    document.getElementById("loader").style.display = "none";
-  },
 
+    // Calcola metriche KPI
+    const totalVolume = sessions.reduce((sum, s) => sum + (s.total_volume || 0), 0);
+    const sessionCount = sessions.length;
+    const seriesCount = sessions.reduce((sum, s) => sum + (s.total_series || 0), 0);
+    const avgVolume = totalVolume / sessionCount;
+    
+    // Allenamenti questa settimana
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const weeklySessions = sessions.filter(s => new Date(s.date) >= oneWeekAgo).length;
+
+    // Calcola PR per ogni esercizio
+    const prData = {};
+    exercises.forEach(ex => {
+      if (!prData[ex.name] || ex.volume > prData[ex.name].volume) {
+        prData[ex.name] = {
+          volume: ex.volume,
+          date: ex.created_at
+        };
+      }
+    });
+
+    // Calcola distribuzione per muscoli
+    const muscleDistribution = {};
+    exercises.forEach(ex => {
+      muscleDistribution[ex.muscolo] = (muscleDistribution[ex.muscolo] || 0) + 1;
+    });
+
+    // Calcola volume per muscolo
+    const muscleVolume = {};
+    exercises.forEach(ex => {
+      muscleVolume[ex.muscolo] = (muscleVolume[ex.muscolo] || 0) + ex.volume;
+    });
+
+    // Calcola totale volume per muscolo
+    const totalMuscleVolume = Object.values(muscleVolume).reduce((a, b) => a + b, 0);
+
+    // Calcola percentuali
+    const musclePercentages = {};
+    Object.keys(muscleVolume).forEach(muscle => {
+      musclePercentages[muscle] = (muscleVolume[muscle] / totalMuscleVolume * 100).toFixed(1);
+    });
+
+    // Trova muscolo più e meno allenato
+    const muscles = Object.keys(musclePercentages);
+    const mostTrained = muscles.reduce((a, b) => musclePercentages[a] > musclePercentages[b] ? a : b);
+    const leastTrained = muscles.reduce((a, b) => musclePercentages[a] < musclePercentages[b] ? a : b);
+
+    // Calcola differenza dalla media
+    const avgPercentage = 100 / muscles.length;
+    const mostDiff = ((musclePercentages[mostTrained] - avgPercentage) / avgPercentage * 100).toFixed(1);
+    const leastDiff = ((musclePercentages[leastTrained] - avgPercentage) / avgPercentage * 100).toFixed(1);
+
+    // Prepara dati per grafici
+    const labels = sessions.map(s => s.date);
+    const volumeData = sessions.map(s => s.total_volume || 0);
+    const seriesData = sessions.map(s => s.total_series || 0);
+    
+    // Colori per i giorni
+    const dayColors = sessions.map(s => s.day === 'A' ? '#007bff' : '#28a745');
+
+    dash.innerHTML = `
+      <h2>📊 Dashboard Avanzata</h2>
+      
+      <!-- KPI Cards -->
+      <div class="dashboard">
+        <div class="kpi-card">
+          <div>🏋️</div>
+          <div class="kpi-value">${totalVolume.toFixed(0)}</div>
+          <div class="kpi-label">Volume Totale (kg)</div>
+        </div>
+        <div class="kpi-card">
+          <div>📅</div>
+          <div class="kpi-value">${sessionCount}</div>
+          <div class="kpi-label">Sessioni Totali</div>
+        </div>
+        <div class="kpi-card">
+          <div>🔢</div>
+          <div class="kpi-value">${seriesCount}</div>
+          <div class="kpi-label">Serie Totali</div>
+        </div>
+        <div class="kpi-card">
+          <div>📊</div>
+          <div class="kpi-value">${avgVolume.toFixed(1)}</div>
+          <div class="kpi-label">Media Volume/Sessione</div>
+        </div>
+        <div class="kpi-card">
+          <div>🗓️</div>
+          <div class="kpi-value">${weeklySessions}</div>
+          <div class="kpi-label">Allenamenti Settimana</div>
+        </div>
+      </div>
+
+      <!-- Grafico Volume -->
+      <div class="chart-container">
+        <div class="chart-header">
+          <h3>📈 Volume Totale per Sessione</h3>
+          <div class="period-selector">
+            <button class="period-btn ${this.dashboardPeriod === 'week' ? 'active' : ''}" onclick="app.setDashboardPeriod('week')">7g</button>
+            <button class="period-btn ${this.dashboardPeriod === 'month' ? 'active' : ''}" onclick="app.setDashboardPeriod('month')">30g</button>
+            <button class="period-btn ${this.dashboardPeriod === 'all' ? 'active' : ''}" onclick="app.setDashboardPeriod('all')">Tutti</button>
+          </div>
+        </div>
+        <canvas id="chartVolume" height="80"></canvas>
+      </div>
+
+      <!-- Grafico Serie -->
+      <div class="chart-container">
+        <h3>📊 Serie Totali per Sessione</h3>
+        <canvas id="chartSeries" height="80"></canvas>
+      </div>
+
+      <!-- Bilanci Muscolari -->
+      <div class="chart-container">
+        <h3>🥧 Distribuzione Serie per Muscolo</h3>
+        <canvas id="chartMuscles" height="80"></canvas>
+        <div class="muscle-balance">
+          ${Object.keys(musclePercentages).map(muscle => `
+            <div class="muscle-item">
+              <div class="muscle-name">${muscle}</div>
+              <div class="muscle-value ${muscle === mostTrained ? 'positive' : muscle === leastTrained ? 'negative' : 'neutral'}">
+                ${musclePercentages[muscle]}%
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Personal Records -->
+      <div class="chart-container">
+        <h3>🏆 Personal Records</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Esercizio</th>
+              <th>Ultimo Volume</th>
+              <th>Miglior Volume</th>
+              <th>Diff.</th>
+              <th>Ultima Data</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${Object.keys(prData).map(exName => {
+              const lastExercise = exercises
+                .filter(ex => ex.name === exName)
+                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+              
+              const lastVolume = lastExercise ? lastExercise.volume : 0;
+              const bestVolume = prData[exName].volume;
+              const diff = lastVolume && bestVolume ? ((lastVolume - bestVolume) / bestVolume * 100).toFixed(1) : 0;
+              const trendClass = diff > 5 ? 'trend-up' : diff < -5 ? 'trend-down' : 'trend-neutral';
+              const trendIcon = diff > 5 ? '🔺' : diff < -5 ? '🔻' : '=';
+              
+              return `
+                <tr>
+                  <td>${exName}</td>
+                  <td>${lastVolume.toFixed(0)} kg</td>
+                  <td>${bestVolume.toFixed(0)} kg</td>
+                  <td class="${trendClass}">${trendIcon} ${Math.abs(diff)}%</td>
+                  <td>${new Date(lastExercise.created_at).toLocaleDateString('it-IT')}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Note & Insights -->
+      <div class="insight-box">
+        <div class="insight-title">💡 Note & Insights Intelligenti</div>
+        <p>${this.generateInsights(sessions, exercises, musclePercentages, mostTrained, leastTrained, mostDiff, leastDiff)}</p>
+      </div>
+
+      <button class="btn" onclick="app.backToMenu()">⬅️ Torna al Menu</button>
+    `;
+
+    // Inizializza i grafici
+    this.initCharts(labels, volumeData, seriesData, dayColors, muscleDistribution, muscleVolume);
+
+  } catch (e) {
+    dash.innerHTML = `
+      <h2>📊 Dashboard</h2>
+      <div class="error-msg">Errore nel caricamento dei dati: ${e.message}</div>
+      <button class="btn" onclick="app.backToMenu()">⬅️ Torna</button>
+    `;
+  }
+  
+  document.getElementById("loader").style.display = "none";
+},
+
+initCharts(labels, volumeData, seriesData, dayColors, muscleDistribution, muscleVolume) {
+  // Grafico Volume
+  new Chart(document.getElementById("chartVolume"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Volume Totale",
+        data: volumeData,
+        borderColor: "#007bff",
+        backgroundColor: "rgba(0,123,255,0.1)",
+        tension: 0.3,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          position: 'top',
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true
+        }
+      }
+    }
+  });
+
+  // Grafico Serie
+  new Chart(document.getElementById("chartSeries"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "Serie Totali",
+        data: seriesData,
+        backgroundColor: dayColors,
+        borderColor: dayColors.map(c => c),
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          display: false
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true
+        }
+      }
+    }
+  });
+
+  // Grafico Muscoli
+  new Chart(document.getElementById("chartMuscles"), {
+    type: "pie",
+    data: {
+      labels: Object.keys(muscleDistribution),
+      datasets: [{
+        data: Object.values(muscleDistribution),
+        backgroundColor: ["#f94144", "#f9c74f", "#90be6d", "#577590", "#43aa8b", "#ff6f00"]
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          position: 'right'
+        }
+      }
+    }
+  });
+},
+
+generateInsights(sessions, exercises, musclePercentages, mostTrained, leastTrained, mostDiff, leastDiff) {
+  const totalSessions = sessions.length;
+  const weeklyAvg = totalSessions / (totalSessions > 0 ? Math.ceil((new Date() - new Date(sessions[0].date)) / (7 * 24 * 60 * 60 * 1000)) : 1);
+  
+  let insight = `Hai completato ${totalSessions} sessioni di allenamento. `;
+  
+  if (weeklyAvg >= 3) {
+    insight += `Con una media di ${weeklyAvg.toFixed(1)} sessioni a settimana, sei molto costante! `;
+  } else if (weeklyAvg >= 2) {
+    insight += `Mantieni una buona frequenza di ${weeklyAvg.toFixed(1)} sessioni a settimana. `;
+  } else {
+    insight += `Potresti aumentare la frequenza delle sessioni per ottenere miglioramenti più rapidi. `;
+  }
+  
+  insight += `Il gruppo muscolare più allenato è il ${mostTrained} (+${mostDiff}% sopra la media). `;
+  insight += `Mentre il ${leastTrained} è il meno stimolato (${leastDiff}% sotto la media). `;
+  
+  // Suggerimenti basati sui dati
+  if (parseFloat(mostDiff) > 20) {
+    insight += `Considera di bilanciare maggiormente l'allenamento concentrandoti sul ${leastTrained}.`;
+  } else if (parseFloat(mostDiff) < 10) {
+    insight += `Ottima distribuzione dell'allenamento tra i vari gruppi muscolari!`;
+  }
+  
+  return insight;
+},
+
+  setDashboardPeriod(period) {
+  this.dashboardPeriod = period;
+  this.showDashboard();
+},
+  
   async showHistory() {
     // Implementazione storico (come prima)
     document.getElementById("menu").classList.add("hidden");
@@ -918,3 +1203,4 @@ window.addEventListener('beforeunload', (event) => {
 </script>
 </body>
 </html>
+
