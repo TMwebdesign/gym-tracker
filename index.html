@@ -350,9 +350,8 @@ function startDynamicTimer(btn, esecSec, recSec, serieTotali) {
   nextSerie();
 }
 window.startDynamicTimer = startDynamicTimer;
-
 /* =======================
-   💾 SALVATAGGIO SESSIONE
+   💾 SALVATAGGIO SESSIONE (FIXED)
    ======================= */
 async function saveSession() {
   const list = document.querySelectorAll(".exercise");
@@ -376,17 +375,43 @@ async function saveSession() {
   });
 
   const notes = document.getElementById("note").value;
-  await supa.from("sessions").update({
-    exercises: exData,
-    notes,
-    total_volume: totalVol,
-    total_series: exData.reduce((a,b)=>a+b.series.length,0)
-  }).eq("id", currentSession.id);
 
-  alert("Sessione salvata ✅");
+  // 🔹 1. Aggiorna i dati della sessione
+  const { error: sessionErr } = await supa
+    .from("sessions")
+    .update({
+      notes,
+      total_volume: totalVol,
+      total_series: exData.reduce((a,b)=>a+b.series.length,0)
+    })
+    .eq("id", currentSession.id);
+
+  if (sessionErr) {
+    console.error("Errore salvataggio sessione:", sessionErr);
+    alert("❌ Errore nel salvataggio della sessione!");
+    return;
+  }
+
+  // 🔹 2. Elimina eventuali esercizi precedenti di quella sessione
+  await supa.from("exercises").delete().eq("session_id", currentSession.id);
+
+  // 🔹 3. Inserisci i nuovi esercizi
+  const insertPromises = exData.map(ex => 
+    supa.from("exercises").insert({
+      session_id: currentSession.id,
+      name: ex.name,
+      muscolo: ex.muscolo,
+      series: ex.series,
+      volume: ex.series.reduce((a,b)=>a+b.rip*b.peso,0)
+    })
+  );
+  await Promise.all(insertPromises);
+
+  alert("✅ Sessione salvata con successo!");
   backToMenu();
 }
 window.saveSession = saveSession;
+
 
 /* =======================
    ⏮️ BACK
@@ -558,3 +583,4 @@ function renderEditSession(session){
 </script>
 </body>
 </html>
+
