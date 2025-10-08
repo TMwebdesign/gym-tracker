@@ -428,13 +428,19 @@ window.backToMenu = backToMenu;
    📌 ULTIMO ALLENAMENTO
    ======================= */
 async function getLastExercise(nome) {
-  const { data } = await supa.from("sessions").select("exercises,date").order("date",{ascending:false}).limit(2);
-  if(!data || data.length<2) return null;
-  const last = data[1].exercises?.find(e=>e.name===nome);
-  if(!last) return null;
-  return last.series.map(s=>`${s.rip}x${s.peso}kg`).join(", ");
+  const { data, error } = await supa
+    .from("exercises")
+    .select("series, created_at")
+    .eq("name", nome)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error || !data || data.length === 0) return null;
+  const ex = data[0];
+  return ex.series.map(s => `${s.rip}x${s.peso}kg`).join(", ");
 }
 window.getLastExercise = getLastExercise;
+
 
 /* =======================
    ⚡ LOADER HIDE
@@ -456,56 +462,65 @@ async function showDashboard() {
     <button onclick="backToMenu()">⬅️ Torna</button>
   `;
 
-  const { data } = await supa.from("sessions").select("*").order("date",{ascending:true});
-  if (!data || data.length === 0) {
+  const { data: sessions } = await supa
+    .from("sessions")
+    .select("*")
+    .order("date", { ascending: true });
+
+  const { data: exercises } = await supa
+    .from("exercises")
+    .select("session_id, muscolo, volume");
+
+  if (!sessions || sessions.length === 0) {
     dash.innerHTML += "<p>Nessuna sessione registrata.</p>";
     return;
   }
 
-  const labels = data.map(d=>d.date);
-  const seriesCounts = data.map(d=>d.total_series||0);
-  new Chart(document.getElementById("chartSeries"),{
-    type:"line",
-    data:{
+  // Serie per sessione
+  const labels = sessions.map(d => d.date);
+  const seriesCounts = sessions.map(d => d.total_series || 0);
+
+  new Chart(document.getElementById("chartSeries"), {
+    type: "line",
+    data: {
       labels,
-      datasets:[{
-        label:"Serie totali per sessione",
-        data:seriesCounts,
-        borderColor:"#007bff",
-        fill:false,
-        tension:.3
+      datasets: [{
+        label: "Serie totali per sessione",
+        data: seriesCounts,
+        borderColor: "#007bff",
+        fill: false,
+        tension: .3
       }]
     },
-    options:{plugins:{legend:{display:false}}}
+    options: { plugins: { legend: { display: false } } }
   });
 
-  // ====== Pie chart muscoli ======
+  // Raggruppamento per muscolo
   const muscoliMap = {};
-  data.forEach(d=>{
-    if(d.exercises){
-      d.exercises.forEach(e=>{
-        if(!muscoliMap[e.muscolo]) muscoliMap[e.muscolo]=0;
-        muscoliMap[e.muscolo]+=e.series.length;
-      });
-    }
+  exercises.forEach(e => {
+    muscoliMap[e.muscolo] = (muscoliMap[e.muscolo] || 0) + 1;
   });
-  const labelsMuscoli = Object.keys(muscoliMap);
-  const valuesMuscoli = Object.values(muscoliMap);
-  new Chart(document.getElementById("chartMuscoli"),{
-    type:"pie",
-    data:{
-      labels:labelsMuscoli,
-      datasets:[{data:valuesMuscoli,backgroundColor:["#f94144","#f9c74f","#90be6d","#577590","#43aa8b","#ff6f00"]}]
+
+  const ctx2 = document.getElementById("chartMuscoli");
+  new Chart(ctx2, {
+    type: "pie",
+    data: {
+      labels: Object.keys(muscoliMap),
+      datasets: [{
+        data: Object.values(muscoliMap),
+        backgroundColor: ["#f94144","#f9c74f","#90be6d","#577590","#43aa8b","#ff6f00"]
+      }]
     }
   });
 
-  const totalVol = data.reduce((a,b)=>a+(b.total_volume||0),0);
+  const totalVol = sessions.reduce((a,b)=>a+(b.total_volume||0),0);
   document.getElementById("summary").innerHTML = `
     <h3>Totale Volume: ${totalVol} kg</h3>
     <p>Media serie per sessione: ${(seriesCounts.reduce((a,b)=>a+b,0)/seriesCounts.length).toFixed(1)}</p>
   `;
 }
 window.showDashboard = showDashboard;
+
 
 /* =======================
    📜 STORICO COMPLETO
@@ -516,22 +531,29 @@ async function showHistory() {
   hist.classList.remove("hidden");
   hist.innerHTML = `<h2>📜 Storico</h2>`;
 
-  const { data } = await supa.from("sessions").select("*").order("date",{ascending:false});
-  if (!data || data.length === 0) {
+  const { data: sessions } = await supa.from("sessions").select("*").order("date",{ascending:false});
+  const { data: exercises } = await supa.from("exercises").select("*");
+
+  if (!sessions || sessions.length === 0) {
     hist.innerHTML += "<p>Nessuna sessione salvata.</p><button onclick='backToMenu()'>⬅️ Torna</button>";
     return;
   }
 
-  data.forEach(d=>{
-    const div=document.createElement("div");
+  sessions.forEach(s => {
+    const exs = exercises.filter(e => e.session_id === s.id);
+    const div = document.createElement("div");
     div.classList.add("exercise");
     div.innerHTML = `
-      <b>${d.day}</b> - ${d.date}<br>
-      ${d.exercises?d.exercises.map(e=>`<u>${e.name}</u>: ${e.series.map(s=>`${s.rip}x${s.peso}kg`).join(", ")}`).join("<br>"):"<i>Nessun esercizio</i>"}
-      <p><b>Note:</b> ${d.notes||"-"}</p>
-      <button onclick="editSession(${d.id})">✏️ Modifica</button>
-      <button onclick="deleteSession(${d.id})">🗑 Elimina</button>
-      <hr>`;
+      <b>${s.day}</b> - ${s.date}<br>
+      ${exs.length > 0 
+        ? exs.map(e => `<u>${e.name}</u>: ${e.series.map(s=>`${s.rip}x${s.peso}kg`).join(", ")}`).join("<br>")
+        : "<i>Nessun esercizio</i>"
+      }
+      <p><b>Note:</b> ${s.notes || "-"}</p>
+      <button onclick="editSession(${s.id})">✏️ Modifica</button>
+      <button onclick="deleteSession(${s.id})">🗑 Elimina</button>
+      <hr>
+    `;
     hist.appendChild(div);
   });
 
@@ -558,29 +580,38 @@ async function editSession(id){
 }
 window.editSession = editSession;
 
-function renderEditSession(session){
+async function renderEditSession(session) {
   document.getElementById("history").classList.add("hidden");
-  const c=document.getElementById("session");
+  const c = document.getElementById("session");
   c.classList.remove("hidden");
-  c.innerHTML=`<h2>Modifica ${session.day} - ${session.date}</h2>`;
-  if(session.exercises){
-    session.exercises.forEach(ex=>{
-      const div=document.createElement("div");
+  c.innerHTML = `<h2>Modifica ${session.day} - ${session.date}</h2>`;
+
+  const { data: exercises } = await supa.from("exercises").select("*").eq("session_id", session.id);
+
+  if (exercises && exercises.length > 0) {
+    exercises.forEach(ex => {
+      const div = document.createElement("div");
       div.classList.add("exercise");
-      div.innerHTML=`
+      div.innerHTML = `
         <h3>${ex.name}</h3>
         <div class="series-list">
-          ${ex.series.map((s,i)=>`<div>${s.rip}x${s.peso}kg <span class='delete-serie' onclick='deleteSerie(this)'>🗑</span></div>`).join("")}
+          ${ex.series.map(s => `<div>${s.rip}x${s.peso}kg <span class='delete-serie' onclick='deleteSerie(this)'>🗑</span></div>`).join("")}
         </div>
       `;
       c.appendChild(div);
     });
   }
-  c.innerHTML+=`<textarea id="note" placeholder="Note...">${session.notes||""}</textarea>
+
+  c.innerHTML += `
+    <textarea id="note" placeholder="Note...">${session.notes || ""}</textarea>
     <button onclick="saveSession()">💾 Salva</button>
-    <button onclick="backToMenu()">⬅️ Torna</button>`;
+    <button onclick="backToMenu()">⬅️ Torna</button>
+  `;
 }
+window.renderEditSession = renderEditSession;
+
 </script>
 </body>
 </html>
+
 
