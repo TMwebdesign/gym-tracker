@@ -5,9 +5,8 @@
   <title>🏋️ Gym Tracker PRO</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    /* ======== 🌞 TEMA CHIARO / UI MODERNA ======== */
     body {
-      font-family: 'Inter', sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       margin: 0;
       background: #f9f9f9;
       color: #111;
@@ -41,6 +40,8 @@
       margin: .3rem;
     }
     button:hover { background: #0056b3; }
+    button.danger { background: #dc3545; }
+    button.danger:hover { background: #c82333; }
 
     .exercise {
       background: #fff;
@@ -86,7 +87,6 @@
     }
     .hidden { display: none; }
 
-    /* ===== TIMER sticky ===== */
     #sticky-timer {
       position: fixed;
       bottom: 40%;
@@ -101,12 +101,12 @@
       display: none;
     }
 
-    /* ===== Grafici e Dashboard ===== */
     canvas {
       background: #fff;
       border-radius: 10px;
       padding: 10px;
       box-shadow: 0 1px 6px rgba(0,0,0,0.1);
+      margin: 1rem 0;
     }
 
     table {
@@ -127,7 +127,6 @@
       color: white;
     }
 
-    /* ===== Loader ===== */
     #loader {
       position: fixed;
       top:0; left:0;
@@ -141,15 +140,15 @@
       z-index:2000;
     }
 
-    /* ===== Note e Riepilogo ===== */
     textarea {
       width:100%;
       min-height:80px;
       border-radius:8px;
       border:1px solid #ccc;
       padding:.7rem;
-      resize:none;
+      resize:vertical;
       margin-top:.5rem;
+      box-sizing: border-box;
     }
     .summary {
       background:#fff;
@@ -164,17 +163,24 @@
       margin:1rem 0;
       color:#28a745;
     }
+    .error-msg {
+      background: #ffe6e6;
+      color: #d32f2f;
+      padding: 1rem;
+      border-radius: 8px;
+      margin: 1rem 0;
+    }
   </style>
 </head>
 <body>
-  <div id="loader">🏋️‍♂️ Prepariamo la tua scheda...</div>
+  <div id="loader">🏋️‍♂️ Caricamento...</div>
   <header>🏋️ Gym Tracker PRO</header>
 
   <div class="container" id="menu">
-    <button onclick="startSession('A')">▶ Giorno A</button>
-    <button onclick="startSession('B')">▶ Giorno B</button>
-    <button onclick="showDashboard()">📊 Dashboard</button>
-    <button onclick="showHistory()">📜 Storico</button>
+    <button onclick="app.startSession('A')">▶ Giorno A</button>
+    <button onclick="app.startSession('B')">▶ Giorno B</button>
+    <button onclick="app.showDashboard()">📊 Dashboard</button>
+    <button onclick="app.showHistory()">📜 Storico</button>
   </div>
 
   <div class="container hidden" id="session"></div>
@@ -182,436 +188,434 @@
   <div class="container hidden" id="history"></div>
 
   <div id="sticky-timer">⏱️ 00s</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script type="module">
-/* =======================
-   🔗 CONNESSIONE SUPABASE
-   ======================= */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
+// ⚠️ IMPORTANTE: Sostituisci con le TUE credenziali Supabase reali!
 const SUPABASE_URL = "https://oyzouvusoysuhylijfdm.supabase.co"; 
-const SUPABASE_KEY = "sb_publishable_xsQgX8-AhpHzK0Cn4rfW9A_rzF6fVEm"; 
-const supa = createClient(SUPABASE_URL, SUPABASE_KEY);
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95em91dnVzb3lzdWh5bGlqZmRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQxMTU1MjQsImV4cCI6MjA1OTY5MTUyNH0.PLACEHOLDER";
 
-/* =======================
-   ⚙️ VARIABILI GLOBALI
-   ======================= */
-let currentSession = null;
-let timerInterval = null;
-let stickyTimer = document.getElementById("sticky-timer");
-let timerRunning = false;
+let supa;
+try {
+  supa = createClient(SUPABASE_URL, SUPABASE_KEY);
+} catch(e) {
+  document.body.innerHTML = `<div class="container"><div class="error-msg">❌ Errore connessione Supabase: ${e.message}<br>Verifica le credenziali!</div></div>`;
+}
 
-/* =======================
-   🏋️ SCHEDE ESERCIZI BASE
-   ======================= */
 const schede = {
   A: [
     { nome:"Chest Press", muscolo:"Petto", come:"Spingi in avanti mantenendo i gomiti a 90°.", att:"Non estendere troppo le braccia." },
     { nome:"Shoulder Press", muscolo:"Spalle", come:"Spingi sopra la testa con schiena aderente.", att:"Non inarcare la schiena." },
     { nome:"Pectoral Machine", muscolo:"Petto", come:"Chiudi le braccia come un abbraccio.", att:"Non sbattere le braccia al centro." },
     { nome:"Alzate Laterali", muscolo:"Spalle", come:"Braccia piegate, solleva fino alle spalle.", att:"Non oltre i 90°." },
-    { nome:"Crunch", muscolo:"Addome", come:"Contrai l’addome.", att:"Non tirare il collo." }
+    { nome:"Crunch", muscolo:"Addome", come:"Contrai l'addome.", att:"Non tirare il collo." }
   ],
   B: [
     { nome:"Lat Machine", muscolo:"Dorso", come:"Tira la barra al petto mantenendo il busto fermo.", att:"Non oscillare con la schiena." },
-    { nome:"Rematore", muscolo:"Dorso", come:"Tira i manici verso l’addome.", att:"Non inarcare la schiena." },
+    { nome:"Rematore", muscolo:"Dorso", come:"Tira i manici verso l'addome.", att:"Non inarcare la schiena." },
     { nome:"Leg Press", muscolo:"Gambe", come:"Spingi con i talloni, ginocchia a 90°.", att:"Non stendere del tutto le gambe." },
     { nome:"Leg Curl", muscolo:"Femorali", come:"Piega le gambe contraendo i femorali.", att:"Movimento lento e controllato." },
     { nome:"Plank", muscolo:"Core", come:"Corpo in linea, addome contratto.", att:"Non inarcare la schiena." }
   ]
 };
 
-/* =======================
-   🚀 AVVIO SESSIONE
-   ======================= */
-async function startSession(day) {
-  document.getElementById("loader").style.display = "flex";
-  const today = new Date().toISOString().split("T")[0];
-  let { data } = await supa.from("sessions").select("*").eq("day", day).eq("date", today).maybeSingle();
+const app = {
+  currentSession: null,
+  timerInterval: null,
 
-  if (!data) {
-    const { data: newSession } = await supa.from("sessions").insert([{ day, date: today, notes:"", total_volume:0 }]).select().single();
-    currentSession = newSession;
-  } else currentSession = data;
+  async startSession(day) {
+    document.getElementById("loader").style.display = "flex";
+    const today = new Date().toISOString().split("T")[0];
+    
+    try {
+      let { data, error } = await supa.from("sessions").select("*").eq("day", day).eq("date", today).maybeSingle();
+      
+      if (error) throw error;
 
-  renderSession(day);
-  document.getElementById("loader").style.display = "none";
-}
-window.startSession = startSession;
-
-/* =======================
-   🖼️ RENDER SESSIONE
-   ======================= */
-async function renderSession(day) {
-  document.getElementById("menu").classList.add("hidden");
-  const c = document.getElementById("session");
-  c.classList.remove("hidden");
-
-  c.innerHTML = `<h2>Sessione Giorno ${day}</h2>`;
-
-  for (const ex of schede[day]) {
-    const last = await getLastExercise(ex.nome);
-    c.innerHTML += `
-      <div class="exercise" data-name="${ex.nome}">
-        <h3>${ex.nome}</h3>
-        <small>(${ex.muscolo})</small>
-        <small>👉 ${ex.come}</small>
-        <small>⚠️ ${ex.att}</small>
-        <small><b>Ultima volta:</b> ${last || "N/A"}</small><br>
-        Rip: <input type="number" class="rip" min="1"> 
-        Peso: <input type="number" class="peso" min="0"> 
-        <button onclick="addSerie(this)">➕ Serie</button>
-        <button onclick="startTimer(this,60)">⏱️ Recupero</button>
-        <button onclick="startDynamicTimer(this,30,60,4)">⏱️+ Dinamico</button>
-        <div class="series-list"></div>
-      </div>`;
-  }
-
-  c.innerHTML += `
-    <textarea id="note" placeholder="Aggiungi note finali..."></textarea>
-    <button onclick="saveSession()">💾 Salva sessione</button>
-    <button onclick="backToMenu()">⬅️ Torna</button>
-  `;
-}
-
-/* =======================
-   ➕ AGGIUNTA SERIE
-   ======================= */
-function addSerie(btn) {
-  const ex = btn.closest(".exercise");
-  const rip = ex.querySelector(".rip").value;
-  const peso = ex.querySelector(".peso").value;
-  if (!rip || !peso) return alert("Inserisci ripetizioni e peso!");
-  const list = ex.querySelector(".series-list");
-  const serieEl = document.createElement("div");
-  serieEl.innerHTML = `${rip} x ${peso}kg <span class="delete-serie" onclick="deleteSerie(this)">🗑</span>`;
-  list.appendChild(serieEl);
-  ex.querySelector(".rip").value = "";
-  ex.querySelector(".peso").value = "";
-}
-window.addSerie = addSerie;
-
-function deleteSerie(el) { el.parentElement.remove(); }
-window.deleteSerie = deleteSerie;
-
-/* =======================
-   ⏱️ TIMER BASE
-   ======================= */
-function startTimer(btn, sec) {
-  let time = sec;
-  stickyTimer.style.display = "block";
-  timerRunning = true;
-  stickyTimer.textContent = `⏱️ ${time}s`;
-  clearInterval(timerInterval);
-  timerInterval = setInterval(() => {
-    stickyTimer.textContent = `⏱️ ${time}s`;
-    time--;
-    if (time < 0) {
-      clearInterval(timerInterval);
-      stickyTimer.textContent = "✅ Fine";
-      timerRunning = false;
-      setTimeout(() => stickyTimer.style.display = "none", 1500);
-    }
-  }, 1000);
-}
-window.startTimer = startTimer;
-
-/* =======================
-   ⏱️ TIMER DINAMICO (SERIE+RECUPERO)
-   ======================= */
-function startDynamicTimer(btn, esecSec, recSec, serieTotali) {
-  let serie = 1;
-  function nextSerie() {
-    if (serie > serieTotali) {
-      stickyTimer.textContent = "🏁 Completato!";
-      setTimeout(()=>stickyTimer.style.display="none",2000);
-      return;
-    }
-    stickyTimer.style.display = "block";
-    let t = esecSec;
-    stickyTimer.textContent = `Serie ${serie}/${serieTotali} ▶ ${t}s`;
-    const faseEsec = setInterval(()=>{
-      stickyTimer.textContent = `Serie ${serie}/${serieTotali} ▶ ${t}s`;
-      t--;
-      if(t<0){
-        clearInterval(faseEsec);
-        let r = recSec;
-        const faseRec = setInterval(()=>{
-          stickyTimer.textContent = `Recupero ${r}s`;
-          r--;
-          if(r<0){
-            clearInterval(faseRec);
-            serie++;
-            nextSerie();
-          }
-        },1000);
+      if (!data) {
+        const { data: newSession, error: insertErr } = await supa
+          .from("sessions")
+          .insert([{ day, date: today, notes:"", total_volume:0, total_series:0 }])
+          .select()
+          .single();
+        
+        if (insertErr) throw insertErr;
+        this.currentSession = newSession;
+      } else {
+        this.currentSession = data;
       }
-    },1000);
-  }
-  nextSerie();
-}
-window.startDynamicTimer = startDynamicTimer;
-/* =======================
-   💾 SALVATAGGIO SESSIONE (FIXED)
-   ======================= */
-async function saveSession() {
-  const list = document.querySelectorAll(".exercise");
-  let exData = [];
-  let totalVol = 0;
 
-  list.forEach(ex=>{
-    const name = ex.dataset.name;
-    const muscolo = ex.querySelector("small").innerText.replace(/[()]/g,"");
-    const series = Array.from(ex.querySelectorAll(".series-list div")).map(s=>{
-      const match = s.innerText.match(/(\d+)\s*x\s*(\d+)/);
-      if(match){
-        const rip = +match[1];
-        const peso = +match[2];
-        totalVol += rip*peso;
-        return {rip,peso};
-      }
-      return null;
-    }).filter(Boolean);
-    if(series.length>0) exData.push({ name, muscolo, series });
-  });
-
-  const notes = document.getElementById("note").value;
-
-  // 🔹 1. Aggiorna i dati della sessione
-  const { error: sessionErr } = await supa
-    .from("sessions")
-    .update({
-      notes,
-      total_volume: totalVol,
-      total_series: exData.reduce((a,b)=>a+b.series.length,0)
-    })
-    .eq("id", currentSession.id);
-
-  if (sessionErr) {
-    console.error("Errore salvataggio sessione:", sessionErr);
-    alert("❌ Errore nel salvataggio della sessione!");
-    return;
-  }
-
-  // 🔹 2. Elimina eventuali esercizi precedenti di quella sessione
-  await supa.from("exercises").delete().eq("session_id", currentSession.id);
-
-  // 🔹 3. Inserisci i nuovi esercizi
-  const insertPromises = exData.map(ex => 
-    supa.from("exercises").insert({
-      session_id: currentSession.id,
-      name: ex.name,
-      muscolo: ex.muscolo,
-      series: ex.series,
-      volume: ex.series.reduce((a,b)=>a+b.rip*b.peso,0)
-    })
-  );
-  await Promise.all(insertPromises);
-
-  alert("✅ Sessione salvata con successo!");
-  backToMenu();
-}
-window.saveSession = saveSession;
-
-
-/* =======================
-   ⏮️ BACK
-   ======================= */
-function backToMenu() {
-  document.getElementById("session").classList.add("hidden");
-  document.getElementById("dashboard").classList.add("hidden");
-  document.getElementById("history").classList.add("hidden");
-  document.getElementById("menu").classList.remove("hidden");
-}
-window.backToMenu = backToMenu;
-
-/* =======================
-   📌 ULTIMO ALLENAMENTO
-   ======================= */
-async function getLastExercise(nome) {
-  const { data, error } = await supa
-    .from("exercises")
-    .select("series, created_at")
-    .eq("name", nome)
-    .order("created_at", { ascending: false })
-    .limit(1);
-
-  if (error || !data || data.length === 0) return null;
-  const ex = data[0];
-  return ex.series.map(s => `${s.rip}x${s.peso}kg`).join(", ");
-}
-window.getLastExercise = getLastExercise;
-
-
-/* =======================
-   ⚡ LOADER HIDE
-   ======================= */
-window.addEventListener("load", ()=>{ document.getElementById("loader").style.display="none"; });
-</script>
-<script type="module">
-import "https://cdn.jsdelivr.net/npm/chart.js";
-
-async function showDashboard() {
-  document.getElementById("menu").classList.add("hidden");
-  const dash = document.getElementById("dashboard");
-  dash.classList.remove("hidden");
-  dash.innerHTML = `
-    <h2>📊 Dashboard</h2>
-    <canvas id="chartSeries" height="200"></canvas>
-    <canvas id="chartMuscoli" height="200" style="margin-top:1rem"></canvas>
-    <div class="summary" id="summary"></div>
-    <button onclick="backToMenu()">⬅️ Torna</button>
-  `;
-
-  const { data: sessions } = await supa
-    .from("sessions")
-    .select("*")
-    .order("date", { ascending: true });
-
-  const { data: exercises } = await supa
-    .from("exercises")
-    .select("session_id, muscolo, volume");
-
-  if (!sessions || sessions.length === 0) {
-    dash.innerHTML += "<p>Nessuna sessione registrata.</p>";
-    return;
-  }
-
-  // Serie per sessione
-  const labels = sessions.map(d => d.date);
-  const seriesCounts = sessions.map(d => d.total_series || 0);
-
-  new Chart(document.getElementById("chartSeries"), {
-    type: "line",
-    data: {
-      labels,
-      datasets: [{
-        label: "Serie totali per sessione",
-        data: seriesCounts,
-        borderColor: "#007bff",
-        fill: false,
-        tension: .3
-      }]
-    },
-    options: { plugins: { legend: { display: false } } }
-  });
-
-  // Raggruppamento per muscolo
-  const muscoliMap = {};
-  exercises.forEach(e => {
-    muscoliMap[e.muscolo] = (muscoliMap[e.muscolo] || 0) + 1;
-  });
-
-  const ctx2 = document.getElementById("chartMuscoli");
-  new Chart(ctx2, {
-    type: "pie",
-    data: {
-      labels: Object.keys(muscoliMap),
-      datasets: [{
-        data: Object.values(muscoliMap),
-        backgroundColor: ["#f94144","#f9c74f","#90be6d","#577590","#43aa8b","#ff6f00"]
-      }]
+      await this.renderSession(day);
+    } catch(e) {
+      alert("❌ Errore: " + e.message);
+      console.error(e);
     }
-  });
+    
+    document.getElementById("loader").style.display = "none";
+  },
 
-  const totalVol = sessions.reduce((a,b)=>a+(b.total_volume||0),0);
-  document.getElementById("summary").innerHTML = `
-    <h3>Totale Volume: ${totalVol} kg</h3>
-    <p>Media serie per sessione: ${(seriesCounts.reduce((a,b)=>a+b,0)/seriesCounts.length).toFixed(1)}</p>
-  `;
-}
-window.showDashboard = showDashboard;
+  async renderSession(day) {
+    document.getElementById("menu").classList.add("hidden");
+    const c = document.getElementById("session");
+    c.classList.remove("hidden");
 
+    let html = `<h2>Sessione Giorno ${day}</h2>`;
 
-/* =======================
-   📜 STORICO COMPLETO
-   ======================= */
-async function showHistory() {
-  document.getElementById("menu").classList.add("hidden");
-  const hist = document.getElementById("history");
-  hist.classList.remove("hidden");
-  hist.innerHTML = `<h2>📜 Storico</h2>`;
+    for (const ex of schede[day]) {
+      const last = await this.getLastExercise(ex.nome);
+      html += `
+        <div class="exercise" data-name="${ex.nome}" data-muscolo="${ex.muscolo}">
+          <h3>${ex.nome}</h3>
+          <small>(${ex.muscolo})</small>
+          <small>👉 ${ex.come}</small>
+          <small>⚠️ ${ex.att}</small>
+          <small><b>Ultima volta:</b> ${last || "N/A"}</small><br>
+          Rip: <input type="number" class="rip" min="1" value=""> 
+          Peso: <input type="number" class="peso" min="0" step="0.5" value=""> 
+          <button onclick="app.addSerie(this)">➕ Serie</button>
+          <button onclick="app.startTimer(60)">⏱️ 60s</button>
+          <button onclick="app.startDynamicTimer(30,60,4)">⏱️ Dinamico</button>
+          <div class="series-list"></div>
+        </div>`;
+    }
 
-  const { data: sessions } = await supa.from("sessions").select("*").order("date",{ascending:false});
-  const { data: exercises } = await supa.from("exercises").select("*");
-
-  if (!sessions || sessions.length === 0) {
-    hist.innerHTML += "<p>Nessuna sessione salvata.</p><button onclick='backToMenu()'>⬅️ Torna</button>";
-    return;
-  }
-
-  sessions.forEach(s => {
-    const exs = exercises.filter(e => e.session_id === s.id);
-    const div = document.createElement("div");
-    div.classList.add("exercise");
-    div.innerHTML = `
-      <b>${s.day}</b> - ${s.date}<br>
-      ${exs.length > 0 
-        ? exs.map(e => `<u>${e.name}</u>: ${e.series.map(s=>`${s.rip}x${s.peso}kg`).join(", ")}`).join("<br>")
-        : "<i>Nessun esercizio</i>"
-      }
-      <p><b>Note:</b> ${s.notes || "-"}</p>
-      <button onclick="editSession(${s.id})">✏️ Modifica</button>
-      <button onclick="deleteSession(${s.id})">🗑 Elimina</button>
-      <hr>
+    html += `
+      <textarea id="note" placeholder="Aggiungi note finali...">${this.currentSession.notes || ''}</textarea>
+      <button onclick="app.saveSession()">💾 Salva sessione</button>
+      <button onclick="app.backToMenu()">⬅️ Torna</button>
     `;
-    hist.appendChild(div);
-  });
 
-  hist.innerHTML += `<button onclick="backToMenu()">⬅️ Torna</button>`;
-}
-window.showHistory = showHistory;
+    c.innerHTML = html;
+  },
 
-/* =======================
-   ✏️ MODIFICA / 🗑 ELIMINA
-   ======================= */
-async function deleteSession(id){
-  if(!confirm("Eliminare questa sessione?")) return;
-  await supa.from("sessions").delete().eq("id",id);
-  alert("Sessione eliminata");
-  showHistory();
-}
-window.deleteSession = deleteSession;
+  addSerie(btn) {
+    const ex = btn.closest(".exercise");
+    const rip = ex.querySelector(".rip").value;
+    const peso = ex.querySelector(".peso").value;
+    if (!rip || !peso) return alert("Inserisci ripetizioni e peso!");
+    
+    const list = ex.querySelector(".series-list");
+    const serieEl = document.createElement("div");
+    serieEl.innerHTML = `${rip} x ${peso}kg <span class="delete-serie" onclick="app.deleteSerie(this)">🗑</span>`;
+    list.appendChild(serieEl);
+    
+    ex.querySelector(".rip").value = "";
+    ex.querySelector(".peso").value = "";
+  },
 
-async function editSession(id){
-  const { data } = await supa.from("sessions").select("*").eq("id",id).single();
-  if(!data) return alert("Errore");
-  currentSession=data;
-  renderEditSession(data);
-}
-window.editSession = editSession;
+  deleteSerie(el) { 
+    el.parentElement.remove(); 
+  },
 
-async function renderEditSession(session) {
-  document.getElementById("history").classList.add("hidden");
-  const c = document.getElementById("session");
-  c.classList.remove("hidden");
-  c.innerHTML = `<h2>Modifica ${session.day} - ${session.date}</h2>`;
+  startTimer(sec) {
+    let time = sec;
+    const timer = document.getElementById("sticky-timer");
+    timer.style.display = "block";
+    timer.textContent = `⏱️ ${time}s`;
+    
+    clearInterval(this.timerInterval);
+    this.timerInterval = setInterval(() => {
+      time--;
+      timer.textContent = `⏱️ ${time}s`;
+      if (time < 0) {
+        clearInterval(this.timerInterval);
+        timer.textContent = "✅ Fine";
+        setTimeout(() => timer.style.display = "none", 1500);
+      }
+    }, 1000);
+  },
 
-  const { data: exercises } = await supa.from("exercises").select("*").eq("session_id", session.id);
+  startDynamicTimer(esecSec, recSec, serieTotali) {
+    const timer = document.getElementById("sticky-timer");
+    let serie = 1;
+    
+    const nextSerie = () => {
+      if (serie > serieTotali) {
+        timer.textContent = "🏁 Completato!";
+        setTimeout(() => timer.style.display = "none", 2000);
+        return;
+      }
+      
+      timer.style.display = "block";
+      let t = esecSec;
+      timer.textContent = `Serie ${serie}/${serieTotali} ▶ ${t}s`;
+      
+      const faseEsec = setInterval(() => {
+        t--;
+        timer.textContent = `Serie ${serie}/${serieTotali} ▶ ${t}s`;
+        if (t < 0) {
+          clearInterval(faseEsec);
+          let r = recSec;
+          const faseRec = setInterval(() => {
+            r--;
+            timer.textContent = `Recupero ${r}s`;
+            if (r < 0) {
+              clearInterval(faseRec);
+              serie++;
+              nextSerie();
+            }
+          }, 1000);
+        }
+      }, 1000);
+    };
+    
+    nextSerie();
+  },
 
-  if (exercises && exercises.length > 0) {
-    exercises.forEach(ex => {
-      const div = document.createElement("div");
-      div.classList.add("exercise");
-      div.innerHTML = `
-        <h3>${ex.name}</h3>
-        <div class="series-list">
-          ${ex.series.map(s => `<div>${s.rip}x${s.peso}kg <span class='delete-serie' onclick='deleteSerie(this)'>🗑</span></div>`).join("")}
-        </div>
-      `;
-      c.appendChild(div);
+  async saveSession() {
+    const list = document.querySelectorAll(".exercise");
+    let exData = [];
+    let totalVol = 0;
+
+    list.forEach(ex => {
+      const name = ex.dataset.name;
+      const muscolo = ex.dataset.muscolo;
+      const series = Array.from(ex.querySelectorAll(".series-list div")).map(s => {
+        const match = s.innerText.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)/);
+        if (match) {
+          const rip = +match[1];
+          const peso = +match[2];
+          totalVol += rip * peso;
+          return { rip, peso };
+        }
+        return null;
+      }).filter(Boolean);
+      
+      if (series.length > 0) exData.push({ name, muscolo, series });
     });
+
+    const notes = document.getElementById("note").value;
+    const totalSeries = exData.reduce((a, b) => a + b.series.length, 0);
+
+    try {
+      // Aggiorna sessione
+      const { error: sessionErr } = await supa
+        .from("sessions")
+        .update({ notes, total_volume: totalVol, total_series: totalSeries })
+        .eq("id", this.currentSession.id);
+
+      if (sessionErr) throw sessionErr;
+
+      // Elimina vecchi esercizi
+      await supa.from("exercises").delete().eq("session_id", this.currentSession.id);
+
+      // Inserisci nuovi esercizi
+      if (exData.length > 0) {
+        const exercises = exData.map(ex => ({
+          session_id: this.currentSession.id,
+          name: ex.name,
+          muscolo: ex.muscolo,
+          series: ex.series,
+          volume: ex.series.reduce((a, b) => a + b.rip * b.peso, 0)
+        }));
+
+        const { error: exErr } = await supa.from("exercises").insert(exercises);
+        if (exErr) throw exErr;
+      }
+
+      alert("✅ Sessione salvata con successo!");
+      this.backToMenu();
+    } catch (e) {
+      alert("❌ Errore salvataggio: " + e.message);
+      console.error(e);
+    }
+  },
+
+  async getLastExercise(nome) {
+    try {
+      const { data, error } = await supa
+        .from("exercises")
+        .select("series, created_at")
+        .eq("name", nome)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (error || !data || data.length === 0) return null;
+      return data[0].series.map(s => `${s.rip}x${s.peso}kg`).join(", ");
+    } catch (e) {
+      return null;
+    }
+  },
+
+  async showDashboard() {
+    document.getElementById("menu").classList.add("hidden");
+    const dash = document.getElementById("dashboard");
+    dash.classList.remove("hidden");
+    dash.innerHTML = `
+      <h2>📊 Dashboard</h2>
+      <canvas id="chartSeries" height="80"></canvas>
+      <canvas id="chartMuscoli" height="80"></canvas>
+      <div class="summary" id="summary"></div>
+      <button onclick="app.backToMenu()">⬅️ Torna</button>
+    `;
+
+    try {
+      const { data: sessions } = await supa.from("sessions").select("*").order("date", { ascending: true });
+      const { data: exercises } = await supa.from("exercises").select("session_id, muscolo, volume");
+
+      if (!sessions || sessions.length === 0) {
+        dash.innerHTML += "<p>Nessuna sessione registrata.</p>";
+        return;
+      }
+
+      // Grafico serie
+      const labels = sessions.map(d => d.date);
+      const seriesCounts = sessions.map(d => d.total_series || 0);
+
+      new Chart(document.getElementById("chartSeries"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            label: "Serie totali",
+            data: seriesCounts,
+            borderColor: "#007bff",
+            backgroundColor: "rgba(0,123,255,0.1)",
+            tension: 0.3
+          }]
+        }
+      });
+
+      // Grafico muscoli
+      const muscoliMap = {};
+      exercises.forEach(e => {
+        muscoliMap[e.muscolo] = (muscoliMap[e.muscolo] || 0) + 1;
+      });
+
+      new Chart(document.getElementById("chartMuscoli"), {
+        type: "pie",
+        data: {
+          labels: Object.keys(muscoliMap),
+          datasets: [{
+            data: Object.values(muscoliMap),
+            backgroundColor: ["#f94144", "#f9c74f", "#90be6d", "#577590", "#43aa8b", "#ff6f00"]
+          }]
+        }
+      });
+
+      const totalVol = sessions.reduce((a, b) => a + (b.total_volume || 0), 0);
+      document.getElementById("summary").innerHTML = `
+        <h3>📈 Totale Volume: ${totalVol.toFixed(1)} kg</h3>
+        <p>Media serie: ${(seriesCounts.reduce((a, b) => a + b, 0) / seriesCounts.length).toFixed(1)}</p>
+      `;
+    } catch (e) {
+      dash.innerHTML += `<div class="error-msg">Errore: ${e.message}</div>`;
+    }
+  },
+
+  async showHistory() {
+    document.getElementById("menu").classList.add("hidden");
+    const hist = document.getElementById("history");
+    hist.classList.remove("hidden");
+    hist.innerHTML = `<h2>📜 Storico</h2>`;
+
+    try {
+      const { data: sessions } = await supa.from("sessions").select("*").order("date", { ascending: false });
+      const { data: exercises } = await supa.from("exercises").select("*");
+
+      if (!sessions || sessions.length === 0) {
+        hist.innerHTML += "<p>Nessuna sessione salvata.</p>";
+      } else {
+        sessions.forEach(s => {
+          const exs = exercises.filter(e => e.session_id === s.id);
+          const div = document.createElement("div");
+          div.classList.add("exercise");
+          div.innerHTML = `
+            <b>${s.day}</b> - ${s.date}<br>
+            ${exs.length > 0
+              ? exs.map(e => `<u>${e.name}</u>: ${e.series.map(ser => `${ser.rip}x${ser.peso}kg`).join(", ")}`).join("<br>")
+              : "<i>Nessun esercizio</i>"
+            }
+            <p><b>Note:</b> ${s.notes || "-"}</p>
+            <button onclick="app.editSession(${s.id})">✏️ Modifica</button>
+            <button class="danger" onclick="app.deleteSession(${s.id})">🗑 Elimina</button>
+          `;
+          hist.appendChild(div);
+        });
+      }
+
+      hist.innerHTML += `<button onclick="app.backToMenu()">⬅️ Torna</button>`;
+    } catch (e) {
+      hist.innerHTML += `<div class="error-msg">Errore: ${e.message}</div>`;
+    }
+  },
+
+  async deleteSession(id) {
+    if (!confirm("Eliminare questa sessione?")) return;
+    try {
+      await supa.from("sessions").delete().eq("id", id);
+      alert("✅ Sessione eliminata");
+      this.showHistory();
+    } catch (e) {
+      alert("❌ Errore: " + e.message);
+    }
+  },
+
+  async editSession(id) {
+    try {
+      const { data } = await supa.from("sessions").select("*").eq("id", id).single();
+      if (!data) return alert("Errore");
+      this.currentSession = data;
+      await this.renderEditSession(data);
+    } catch (e) {
+      alert("❌ Errore: " + e.message);
+    }
+  },
+
+  async renderEditSession(session) {
+    document.getElementById("history").classList.add("hidden");
+    const c = document.getElementById("session");
+    c.classList.remove("hidden");
+    c.innerHTML = `<h2>✏️ Modifica ${session.day} - ${session.date}</h2>`;
+
+    try {
+      const { data: exercises } = await supa.from("exercises").select("*").eq("session_id", session.id);
+
+      if (exercises && exercises.length > 0) {
+        exercises.forEach(ex => {
+          const div = document.createElement("div");
+          div.classList.add("exercise");
+          div.dataset.name = ex.name;
+          div.dataset.muscolo = ex.muscolo;
+          div.innerHTML = `
+            <h3>${ex.name}</h3>
+            <small>(${ex.muscolo})</small>
+            <div class="series-list">
+              ${ex.series.map(s => `<div>${s.rip}x${s.peso}kg <span class='delete-serie' onclick='app.deleteSerie(this)'>🗑</span></div>`).join("")}
+            </div>
+            Rip: <input type="number" class="rip" min="1"> 
+            Peso: <input type="number" class="peso" min="0" step="0.5"> 
+            <button onclick="app.addSerie(this)">➕ Serie</button>
+          `;
+          c.appendChild(div);
+        });
+      }
+
+      c.innerHTML += `
+        <textarea id="note" placeholder="Note...">${session.notes || ""}</textarea>
+        <button onclick="app.saveSession()">💾 Salva</button>
+        <button onclick="app.backToMenu()">⬅️ Torna</button>
+      `;
+    } catch (e) {
+      c.innerHTML += `<div class="error-msg">Errore: ${e.message}</div>`;
+    }
+  },
+
+  backToMenu() {
+    document.getElementById("session").classList.add("hidden");
+    document.getElementById("dashboard").classList.add("hidden");
+    document.getElementById("history").classList.add("hidden");
+    document.getElementById("menu").classList.remove("hidden");
   }
+};
 
-  c.innerHTML += `
-    <textarea id="note" placeholder="Note...">${session.notes || ""}</textarea>
-    <button onclick="saveSession()">💾 Salva</button>
-    <button onclick="backToMenu()">⬅️ Torna</button>
-  `;
-}
-window.renderEditSession = renderEditSession;
+window.app = app;
 
+window.addEventListener("load", () => {
+  document.getElementById("loader").style.display = "none";
+});
 </script>
 </body>
 </html>
-
-
