@@ -446,20 +446,89 @@ try {
 
 const schede = {
   A: [
-    { nome:"Chest Press", muscolo:"Petto", come:"Spingi in avanti mantenendo i gomiti a 90°.", att:"Non estendere troppo le braccia." },
-    { nome:"Shoulder Press", muscolo:"Spalle", come:"Spingi sopra la testa con schiena aderente.", att:"Non inarcare la schiena." },
-    { nome:"Pectoral Machine", muscolo:"Petto", come:"Chiudi le braccia come un abbraccio.", att:"Non sbattere le braccia al centro." },
-    { nome:"Alzate Laterali", muscolo:"Spalle", come:"Braccia piegate, solleva fino alle spalle.", att:"Non oltre i 90°." },
-    { nome:"Crunch", muscolo:"Addome", come:"Contrai l'addome.", att:"Non tirare il collo." }
+    { 
+      nome: "Bench Press (bilanciere o manubri piani)", 
+      muscolo: "Petto", 
+      come: "Sdraiato sulla panca, piedi a terra, abbassa il bilanciere al petto con controllo, spingi verso l’alto senza bloccare gomiti", 
+      att: "Mantieni il controllo e non bloccare i gomiti." 
+    },
+    { 
+      nome: "Goblet Squat (manubrio)", 
+      muscolo: "Gambe", 
+      come: "Tieni il manubrio al petto, piedi larghi, scendi fino a quando i femorali sfiorano i polpacci, busto alto, risali spingendo con i talloni", 
+      att: "Busto alto, ginocchia allineate ai piedi." 
+    },
+    { 
+      nome: "Shoulder Press (panca inclinata 60°)", 
+      muscolo: "Spalle", 
+      come: "Seduto sulla panca inclinata, spingi i manubri sopra le spalle fino a braccia quasi tese, abbassa lentamente", 
+      att: "Non inarcare la schiena, controllo completo." 
+    },
+    { 
+      nome: "Affondi in camminata (manubri)", 
+      muscolo: "Gambe", 
+      come: "Passo lungo in avanti, ginocchio posteriore vicino al pavimento, busto dritto, torna in posizione e cambia gamba", 
+      att: "Mantieni busto verticale e passo controllato." 
+    },
+    { 
+      nome: "Pectoral Fly (panca piana)", 
+      muscolo: "Petto", 
+      come: "Sdraiato sulla panca, gomiti leggermente piegati, apri le braccia ai lati fino a sentire stretch pettorali, poi contrai e torna sopra", 
+      att: "Controllo nello stretch e ritorno." 
+    },
+    { 
+      nome: "Crunch + Plank Superset", 
+      muscolo: "Core", 
+      come: "Crunch: mani dietro la testa, solleva busto verso ginocchia; Plank: corpo dritto su avambracci e punte piedi", 
+      att: "Mantieni addome contratto e respirazione regolare." 
+    },
+    { 
+      nome: "Extra opzionale: Sacco da boxe", 
+      muscolo: "Cardio/Braccia", 
+      come: "2’ sacco × 2 round, concentrati su tecnica", 
+      att: "Intensità 80%, tecnica e velocità." 
+    }
   ],
   B: [
-    { nome:"Lat Machine", muscolo:"Dorso", come:"Tira la barra al petto mantenendo il busto fermo.", att:"Non oscillare con la schiena." },
-    { nome:"Rematore", muscolo:"Dorso", come:"Tira i manici verso l'addome.", att:"Non inarcare la schiena." },
-    { nome:"Leg Press", muscolo:"Gambe", come:"Spingi con i talloni, ginocchia a 90°.", att:"Non stendere del tutto le gambe." },
-    { nome:"Leg Curl", muscolo:"Femorali", come:"Piega le gambe contraendo i femorali.", att:"Movimento lento e controllato." },
-    { nome:"Plank", muscolo:"Core", come:"Corpo in linea, addome contratto.", att:"Non inarcare la schiena." }
+    { 
+      nome: "Rematore con manubrio (una mano)", 
+      muscolo: "Dorso", 
+      come: "Appoggiato su panca con una mano e ginocchio, tira il manubrio verso il fianco, busto stabile, controlla discesa", 
+      att: "Schiena dritta, movimento lento." 
+    },
+    { 
+      nome: "Stacco Rumeno (bilanciere o manubri)", 
+      muscolo: "Gambe/Dorso", 
+      come: "Schiena dritta, scendi piegando solo i fianchi, glutei e femorali attivi, risali spingendo fianchi in avanti", 
+      att: "Non inarcare la schiena, controllo totale." 
+    },
+    { 
+      nome: "Curl Bilanciere o Manubri", 
+      muscolo: "Bicipiti", 
+      come: "Braccia lungo i fianchi, solleva lentamente il peso verso spalle, senza slancio", 
+      att: "Controlla movimento e contrai bicipiti." 
+    },
+    { 
+      nome: "French Press o Kickback", 
+      muscolo: "Tricipiti", 
+      come: "French Press: sdraiato, piega gomiti dietro la testa e risali; Kickback: busto piegato, estendi braccio all’indietro", 
+      att: "Controllo totale, gomito fisso." 
+    },
+    { 
+      nome: "Leg Raise + Russian Twist Superset", 
+      muscolo: "Core", 
+      come: "Leg Raise: solleva gambe dritte; Russian Twist: busto ruota da lato a lato, con o senza manubrio", 
+      att: "Addome contratto, movimenti lenti e controllati." 
+    },
+    { 
+      nome: "Finisher (Sacco o Shadow Boxing)", 
+      muscolo: "Cardio/Braccia", 
+      come: "3 round 1’ on / 30’’ off, intensità 80%", 
+      att: "Concentrati su tecnica e velocità." 
+    }
   ]
 };
+
 
 const app = {
   currentSession: null,
@@ -1203,4 +1272,5 @@ window.addEventListener('beforeunload', (event) => {
 </script>
 </body>
 </html>
+
 
